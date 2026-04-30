@@ -1,0 +1,32 @@
+node_modules/
+.next/
+dist/
+out/
+.turbo/
+coverage/
+.DS_Store
+
+.env
+.env.local
+.env.*.local
+
+# Hardhat
+contracts/cache/
+contracts/artifacts/
+contracts/typechain-types/
+
+# OpenVoice / Python
+**/__pycache__/
+**/*.egg-info/
+**/.venv/
+openvoice/checkpoints_v2/
+openvoice/outputs_v2/
+openvoice/processed/
+openvoice/voices/
+
+# Browser dir build
+browser/.docker/
+caas-project-reference/
+backend/
+browser/
+brand-moodboard/

@@ -1,0 +1,153 @@
+"use client";
+
+import { FEATURED_TAARS } from "@/lib/taars-data";
+import type { TaarData } from "@/lib/taars-data";
+import { motion, useInView } from "framer-motion";
+import { BadgeCheck, MessageCircle, Users } from "lucide-react";
+import Image from "next/image";
+import { useRef } from "react";
+
+const landingGradients: Record<string, string> = {
+  "vitalik.taars.eth": "from-orange-700 to-orange-950",
+  "trump.taars.eth": "from-orange-700 to-orange-950",
+  "fabian.taars.eth": "from-orange-600 to-orange-800",
+  "balaji.taars.eth": "from-orange-600 to-orange-900",
+};
+
+const landingPrices: Record<string, string> = {
+  "vitalik.taars.eth": "$5.00",
+  "trump.taars.eth": "$10.00",
+  "fabian.taars.eth": "$1.00",
+  "balaji.taars.eth": "$3.00",
+};
+
+function TaarCard({
+  taar,
+  index,
+}: {
+  taar: TaarData;
+  index: number;
+}) {
+  const gradient = landingGradients[taar.ens] || "from-orange-600 to-orange-900";
+  const price = landingPrices[taar.ens] || taar.price;
+  const isSelf = taar.verification === "self";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      whileInView={{ opacity: 1, x: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.4, delay: index * 0.08 }}
+      className="flex-shrink-0 w-56 sm:w-60"
+    >
+      <div
+        className={`relative rounded-2xl bg-gradient-to-br ${gradient} p-4 h-72 flex flex-col justify-between overflow-hidden group`}
+      >
+        {/* Decorative circles */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
+
+        {/* Verification badge */}
+        <div className="relative flex items-center justify-between">
+          <div className="w-14 h-14 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20 overflow-hidden">
+            {taar.image ? (
+              <Image
+                src={taar.image}
+                alt={taar.name}
+                width={56}
+                height={56}
+                className="w-full h-full object-cover object-top"
+              />
+            ) : (
+              <span className="font-coolvetica text-lg text-white/90">
+                {taar.initials}
+              </span>
+            )}
+          </div>
+          {isSelf ? (
+            <span className="inline-flex items-center gap-1 bg-white/20 backdrop-blur-sm rounded-full px-2 py-0.5 border border-white/10">
+              <BadgeCheck size={11} className="text-white" />
+              <span className="text-[9px] text-white font-medium">Verified</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 bg-black/20 backdrop-blur-sm rounded-full px-2 py-0.5 border border-white/10">
+              <Users size={11} className="text-white/60" />
+              <span className="text-[9px] text-white/60 font-medium italic">Community</span>
+            </span>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="relative mt-auto space-y-2">
+          <div>
+            <h3 className="font-coolvetica text-xl text-white leading-tight">
+              {taar.name}
+            </h3>
+            <p className="text-white/60 text-xs mt-0.5 line-clamp-2">{taar.bio}</p>
+          </div>
+
+          {/* Community disclaimer */}
+          {taar.disclaimer && (
+            <p className="text-white/40 text-[9px] italic leading-tight line-clamp-1">
+              {taar.disclaimer}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-white/40 font-mono truncate">
+              {taar.ens}
+            </span>
+          </div>
+
+          <div className="relative z-10 flex items-center justify-between pt-1">
+            <span className="text-white/70 text-xs">
+              {price}
+              <span className="text-white/40"> /min</span>
+            </span>
+            <button
+              type="button"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-black/10 bg-[#ffffff] px-3 py-1.5 text-xs font-medium text-[#0a0a0a] shadow-sm transition-colors [color-scheme:light] appearance-none hover:bg-[#f5f5f5]"
+            >
+              <MessageCircle className="h-3 w-3 text-[#0a0a0a]" />
+              Chat
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+export default function FeaturedTaars() {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
+  return (
+    <section id="featured" className="py-24 sm:py-32" ref={ref}>
+      <div className="max-w-7xl mx-auto px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6 }}
+          className="mb-12"
+        >
+          <h2 className="font-coolvetica text-4xl sm:text-5xl text-foreground">
+            Featured taars
+          </h2>
+          <p className="text-muted-foreground mt-3 text-lg">
+            Explore AI replicas - verified creators and community interpretations.
+          </p>
+        </motion.div>
+      </div>
+
+      {/* Horizontal scroll container */}
+      <div className="overflow-x-auto overflow-y-visible pb-4 scrollbar-hide">
+        <div className="flex gap-4 px-6 max-w-7xl mx-auto py-2">
+          {FEATURED_TAARS.map((taar, i) => (
+            <TaarCard key={taar.ens} taar={taar} index={i} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}

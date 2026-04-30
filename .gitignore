@@ -30,3 +30,6 @@ caas-project-reference/
 backend/
 browser/
 brand-moodboard/
+.env.bak*
+.env.local
+*.bak

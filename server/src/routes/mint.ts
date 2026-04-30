@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { MintRequest, MintResponse, MintErrorResponse } from '@taars/sdk';
-import { TAARS_TEXT_KEYS } from '@taars/sdk';
 import { trainVoiceProfile } from '../services/voice.js';
 import { uploadEncryptedBundleToZeroG } from '../services/storage.js';
 import { mintINFT } from '../services/inft.js';
@@ -127,7 +126,6 @@ mint.post('/', async (c) => {
       txEnsSubname: sub.txHash ?? '0x',
       txEnsTextRecords,
     };
-    void TAARS_TEXT_KEYS; // ensure import is used / aligned with frontend reader
     return c.json(response);
   } catch (e) {
     const err: MintErrorResponse = {

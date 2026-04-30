@@ -23,7 +23,10 @@ let _memDataCtor: any = null;
 
 async function loadSdk() {
   if (_indexerCtor && _memDataCtor) return { Indexer: _indexerCtor, MemData: _memDataCtor };
-  const sdk: any = await import('@0glabs/0g-ts-sdk');
+  // Note: using @0gfoundation/0g-ts-sdk (1.2.x) — the newer @0glabs/0g-ts-sdk (0.3.x)
+  // reverts on Galileo testnet's Flow contract for some submissions; the foundation
+  // package is the working pattern from the reference project.
+  const sdk: any = await import('@0gfoundation/0g-ts-sdk');
   _indexerCtor = sdk.Indexer;
   _memDataCtor = sdk.MemData;
   return { Indexer: _indexerCtor, MemData: _memDataCtor };

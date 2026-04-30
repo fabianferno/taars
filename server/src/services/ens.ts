@@ -10,13 +10,17 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
-import { namehash, normalize, labelhash } from 'viem/ens';
+import { namehash, normalize } from 'viem/ens';
 import { randomBytes } from 'node:crypto';
 import { env } from '../env.js';
 
 const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e' as const;
-const ETH_REGISTRAR_CONTROLLER = '0xfb3cE5D01e0f33f41DbB39035dB9745962F1f968' as const;
-const PUBLIC_RESOLVER = '0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5' as const;
+// ENS v3 ETHRegistrarController (NameWrapper-aware) on Sepolia.
+const ETH_REGISTRAR_CONTROLLER = '0xFED6a969AaA60E4961FCD3EBF1A2e8913ac65B72' as const;
+// NameWrapper on Sepolia (parent .eth registrations via v3 controller are wrapped here).
+const NAME_WRAPPER = '0x0635513f179D50A207757E05759CbD106d7dFcE8' as const;
+// v3 Public Resolver on Sepolia (NameWrapper-aware).
+const PUBLIC_RESOLVER = '0x8FADE66B79cC9f707aB26799354482EB93a5B7dD' as const;
 
 const ENS_REGISTRY_ABI = [
   {
@@ -26,18 +30,30 @@ const ENS_REGISTRY_ABI = [
     inputs: [{ name: 'node', type: 'bytes32' }],
     outputs: [{ name: '', type: 'address' }],
   },
+] as const;
+
+const NAME_WRAPPER_ABI = [
+  {
+    name: 'ownerOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'id', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
   {
     name: 'setSubnodeRecord',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
-      { name: 'node', type: 'bytes32' },
-      { name: 'label', type: 'bytes32' },
+      { name: 'parentNode', type: 'bytes32' },
+      { name: 'label', type: 'string' },
       { name: 'owner', type: 'address' },
       { name: 'resolver', type: 'address' },
       { name: 'ttl', type: 'uint64' },
+      { name: 'fuses', type: 'uint32' },
+      { name: 'expiry', type: 'uint64' },
     ],
-    outputs: [],
+    outputs: [{ name: '', type: 'bytes32' }],
   },
 ] as const;
 
@@ -237,38 +253,60 @@ export async function ensureParentEns(): Promise<{ owner: Address; txHash?: Hash
   return { owner: account.address, txHash: registerTx };
 }
 
-/// Create `<sublabel>.<parent>.eth` and assign ownership to `subOwner`.
-/// Idempotent: if already exists, returns existing owner.
+/// Create `<sublabel>.<parent>.eth` via NameWrapper (parent is wrapped).
+/// Owner of the subname = the deployer wallet (so deployer can write text records).
+/// Returns the actual owner, tx hash, and node hash. Idempotent via existence check.
 export async function createSubname(
   sublabel: string,
-  subOwner: Address
+  _subOwner?: Address
 ): Promise<{ owner: Address; txHash?: Hash; node: `0x${string}` }> {
+  void _subOwner; // hackathon: deployer owns subnames so it can write text records
   const { publicClient, walletClient, account } = makeClients();
   const fullName = `${sublabel}.${env.PARENT_ENS_NAME}`;
   const node = namehash(normalize(fullName));
 
-  const existingOwner = (await publicClient.readContract({
+  // Check existence: registry owner non-zero means it exists.
+  const registryOwner = (await publicClient.readContract({
     address: ENS_REGISTRY,
     abi: ENS_REGISTRY_ABI,
     functionName: 'owner',
     args: [node],
   })) as Address;
-  if (existingOwner !== '0x0000000000000000000000000000000000000000') {
-    return { owner: existingOwner, node };
+  if (registryOwner !== '0x0000000000000000000000000000000000000000') {
+    // already exists. If wrapped, real owner is NameWrapper.ownerOf(uint256(node))
+    let realOwner: Address = registryOwner;
+    if (registryOwner.toLowerCase() === NAME_WRAPPER.toLowerCase()) {
+      realOwner = (await publicClient.readContract({
+        address: NAME_WRAPPER,
+        abi: NAME_WRAPPER_ABI,
+        functionName: 'ownerOf',
+        args: [BigInt(node)],
+      })) as Address;
+    }
+    return { owner: realOwner, node };
   }
 
   const parentNode = namehash(normalize(env.PARENT_ENS_NAME));
+  // Subname owner = deployer (account). fuses=0, expiry=max (capped at parent's expiry by the wrapper).
   const txHash = await walletClient.writeContract({
-    address: ENS_REGISTRY,
-    abi: ENS_REGISTRY_ABI,
+    address: NAME_WRAPPER,
+    abi: NAME_WRAPPER_ABI,
     functionName: 'setSubnodeRecord',
-    args: [parentNode, labelhash(sublabel), subOwner, PUBLIC_RESOLVER, 0n],
+    args: [
+      parentNode,
+      sublabel,
+      account.address,
+      PUBLIC_RESOLVER,
+      0n,
+      0,
+      18446744073709551615n, // type(uint64).max
+    ],
     account,
     chain: sepolia,
   });
   await publicClient.waitForTransactionReceipt({ hash: txHash });
 
-  return { owner: subOwner, txHash, node };
+  return { owner: account.address, txHash, node };
 }
 
 /// Write a single text record on the public resolver.

@@ -2,6 +2,7 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { resolveTaarsLabel, type ReplicaProfile } from '@/lib/ens';
+import { ChatPanel } from '@/components/Chat/ChatPanel';
 
 type PageProps = { params: Promise<{ ensName: string }> };
 
@@ -34,12 +35,16 @@ export default function ProfilePage({ params }: PageProps) {
   }, [ensName]);
 
   if (loading)
-    return <main className="mx-auto max-w-2xl p-6 text-neutral-400">Resolving {ensName}.taars.eth…</main>;
+    return (
+      <main className="mx-auto max-w-3xl p-6 pt-12 text-neutral-400">
+        Resolving {ensName}.taars.eth…
+      </main>
+    );
   if (error)
     return (
-      <main className="mx-auto max-w-2xl p-6">
-        <Link href="/" className="text-sm text-neutral-400">
-          ← Home
+      <main className="mx-auto max-w-3xl p-6 pt-12">
+        <Link href="/" className="text-sm text-neutral-400 hover:text-neutral-100">
+          &larr; Home
         </Link>
         <p className="mt-4 text-red-400">{error}</p>
       </main>
@@ -49,27 +54,63 @@ export default function ProfilePage({ params }: PageProps) {
   const r = profile.records;
   const inftRef = r['taars.inft'] ?? '';
   const tokenId = inftRef.split(':').pop() ?? '';
+  const initials = profile.ensLabel.slice(0, 2).toUpperCase();
 
   return (
-    <main className="mx-auto max-w-2xl p-6 pt-12">
-      <Link href="/" className="mb-4 inline-block text-sm text-neutral-400 hover:text-neutral-100">
-        ← Home
+    <main className="mx-auto max-w-3xl p-6 pt-12">
+      <Link
+        href="/"
+        className="mb-4 inline-block text-sm text-neutral-400 hover:text-neutral-100"
+      >
+        &larr; Home
       </Link>
 
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">{profile.ensFullName}</h1>
-        {r.description && <p className="mt-2 text-neutral-300">{r.description}</p>}
+      {/* ProfileHero */}
+      <header className="mb-6 flex items-start gap-4">
+        {r.avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={r.avatar}
+            alt={profile.ensFullName}
+            className="h-16 w-16 rounded-2xl object-cover"
+          />
+        ) : (
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-accent-dark font-coolvetica text-2xl text-white">
+            {initials}
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <h1 className="font-coolvetica text-3xl tracking-tight text-foreground">
+            {profile.ensFullName}
+          </h1>
+          {r.description && (
+            <p className="mt-1 text-sm text-neutral-300">{r.description}</p>
+          )}
+          <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">
+            owner {profile.owner}
+          </p>
+        </div>
+        <div className="shrink-0 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-right">
+          <div className="text-[10px] uppercase tracking-wide text-accent">per-min</div>
+          <div className="font-mono text-base text-accent">
+            ${r['taars.price'] ?? '—'}
+          </div>
+        </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 text-sm">
+      {/* Stats grid */}
+      <section className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <Stat label="Per-minute" value={r['taars.price'] ? `$${r['taars.price']}` : '—'} />
         <Stat label="Currency" value={r['taars.currency'] ?? '—'} />
         <Stat label="Network" value={r['taars.network'] ?? '—'} />
         <Stat label="Version" value={r['taars.version'] ?? '—'} />
       </section>
 
-      <details className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
-        <summary className="cursor-pointer text-sm text-neutral-300">On-chain receipts</summary>
+      {/* On-chain receipts */}
+      <details className="mb-6 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
+        <summary className="cursor-pointer text-sm text-neutral-300">
+          On-chain receipts
+        </summary>
         <ul className="mt-3 space-y-1 break-all font-mono text-xs text-neutral-400">
           <li>owner: {profile.owner}</li>
           <li>token id: {tokenId || '—'}</li>
@@ -84,14 +125,13 @@ export default function ProfilePage({ params }: PageProps) {
             target="_blank"
             rel="noreferrer"
           >
-            View INFT on 0G Chainscan ↗
+            View INFT on 0G Chainscan &rarr;
           </a>
         )}
       </details>
 
-      <div className="mt-8 rounded-2xl bg-gradient-to-br from-fuchsia-500/30 to-purple-600/30 p-6 text-center">
-        <p className="text-sm text-neutral-200">Chat & voice come in Plan 2.</p>
-      </div>
+      {/* Chat panel */}
+      <ChatPanel profile={profile} />
     </main>
   );
 }
@@ -100,7 +140,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
       <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-1 font-mono text-sm">{value}</div>
+      <div className="mt-1 font-mono text-sm text-neutral-100">{value}</div>
     </div>
   );
 }

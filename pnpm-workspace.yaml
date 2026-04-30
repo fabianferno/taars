@@ -3,3 +3,5 @@ packages:
   - 'server'
   - 'contracts'
   - 'sdk'
+  - 'mcp'
+  - 'discord-bot'

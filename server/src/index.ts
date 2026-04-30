@@ -5,6 +5,10 @@ import { logger } from 'hono/logger';
 import { env } from './env.js';
 import { health } from './routes/health.js';
 import { mint } from './routes/mint.js';
+import { resolve } from './routes/resolve.js';
+import { chat } from './routes/chat.js';
+import { deploy } from './routes/deploy.js';
+import { transfer } from './routes/transfer.js';
 
 const app = new Hono();
 
@@ -12,6 +16,10 @@ app.use('*', logger());
 app.use('*', cors());
 app.route('/health', health);
 app.route('/mint', mint);
+app.route('/resolve', resolve);
+app.route('/chat', chat);
+app.route('/deploy', deploy);
+app.route('/transfer', transfer);
 
 app.onError((err, c) => {
   console.error('[server error]', err);

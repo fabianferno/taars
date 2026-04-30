@@ -1,0 +1,171 @@
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
+import { createPublicClient, createWalletClient, http, type Address, type Hash } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { sepolia } from 'viem/chains';
+import { env } from '../env.js';
+
+const billingAbi = [
+  {
+    type: 'function',
+    name: 'settleSession',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'sessionId', type: 'bytes32' },
+      { name: 'endedAt', type: 'uint64' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'getRevenue',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'ownerBalance',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+const AUDIT_DIR = path.resolve(process.cwd(), 'server', '.audit');
+const AUDIT_FILE = path.join(AUDIT_DIR, 'sessions.jsonl');
+
+async function appendAudit(record: Record<string, unknown>): Promise<void> {
+  try {
+    // Resolve relative to server dir whether cwd is repo root or server/.
+    const tryPaths = [
+      path.resolve(process.cwd(), '.audit'),
+      path.resolve(process.cwd(), 'server', '.audit'),
+    ];
+    const cwdName = path.basename(process.cwd());
+    const dir = cwdName === 'server' ? tryPaths[0] : tryPaths[1];
+    const file = path.join(dir, 'sessions.jsonl');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.appendFile(file, JSON.stringify({ ts: Date.now(), ...record }) + '\n', 'utf8');
+  } catch (e) {
+    console.warn('[billing] audit write failed:', (e as Error).message);
+  }
+}
+
+export interface SettleSkipped {
+  skipped: true;
+  reason: string;
+}
+
+export interface SettleResult {
+  skipped?: false;
+  txHash: string;
+  expectedUsd: string;
+}
+
+function expectedUsdFromRate(ratePerMinUsd: string, durationSeconds: number): string {
+  const rate = Number(ratePerMinUsd || '0');
+  if (!Number.isFinite(rate) || rate <= 0) return '0';
+  const minutes = durationSeconds / 60;
+  return (rate * minutes).toFixed(4);
+}
+
+async function settleOnce(
+  sessionId: `0x${string}`,
+  endedAt: number,
+  ratePerMinUsd: string,
+  durationSeconds: number
+): Promise<SettleResult> {
+  const account = privateKeyToAccount(env.DEPLOYER_PRIVATE_KEY as `0x${string}`);
+  const transport = http(env.SEPOLIA_RPC_URL);
+  const publicClient = createPublicClient({ chain: sepolia, transport });
+  const walletClient = createWalletClient({ chain: sepolia, transport, account });
+
+  const txHash: Hash = await walletClient.writeContract({
+    address: env.TAARS_BILLING_ADDRESS as Address,
+    abi: billingAbi,
+    functionName: 'settleSession',
+    args: [sessionId, BigInt(endedAt)],
+    account,
+    chain: sepolia,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  return {
+    txHash,
+    expectedUsd: expectedUsdFromRate(ratePerMinUsd, durationSeconds),
+  };
+}
+
+const BACKOFF_MS = [1000, 3000, 9000];
+
+/// Settle a chat session on the billing contract. Retries up to 3 times with
+/// exponential backoff. Logs each attempt to .audit/sessions.jsonl. If
+/// TAARS_BILLING_ADDRESS is unset, returns a skipped marker without throwing.
+export async function settleSessionOnChain(
+  sessionId: `0x${string}`,
+  endedAt: number,
+  ratePerMinUsd = '0',
+  durationSeconds = 0
+): Promise<SettleResult | SettleSkipped> {
+  if (!env.TAARS_BILLING_ADDRESS) {
+    const out: SettleSkipped = {
+      skipped: true,
+      reason: 'TAARS_BILLING_ADDRESS not set; on-chain settlement disabled',
+    };
+    await appendAudit({ event: 'settle.skipped', sessionId, ...out });
+    return out;
+  }
+
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await appendAudit({ event: 'settle.attempt', attempt, sessionId, endedAt });
+      const r = await settleOnce(sessionId, endedAt, ratePerMinUsd, durationSeconds);
+      await appendAudit({ event: 'settle.success', attempt, sessionId, ...r });
+      return r;
+    } catch (e) {
+      lastErr = e as Error;
+      await appendAudit({
+        event: 'settle.error',
+        attempt,
+        sessionId,
+        error: lastErr.message?.slice(0, 400),
+      });
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1]));
+      }
+    }
+  }
+  const skipped: SettleSkipped = {
+    skipped: true,
+    reason: `settle failed after 3 attempts: ${lastErr?.message ?? 'unknown'}`,
+  };
+  await appendAudit({ event: 'settle.give_up', sessionId, ...skipped });
+  return skipped;
+}
+
+export async function getOnChainRevenue(tokenId: bigint): Promise<bigint> {
+  if (!env.TAARS_BILLING_ADDRESS) return 0n;
+  const transport = http(env.SEPOLIA_RPC_URL);
+  const publicClient = createPublicClient({ chain: sepolia, transport });
+  return (await publicClient.readContract({
+    address: env.TAARS_BILLING_ADDRESS as Address,
+    abi: billingAbi,
+    functionName: 'getRevenue',
+    args: [tokenId],
+  })) as bigint;
+}
+
+export async function getOwnerBalance(tokenId: bigint): Promise<bigint> {
+  if (!env.TAARS_BILLING_ADDRESS) return 0n;
+  const transport = http(env.SEPOLIA_RPC_URL);
+  const publicClient = createPublicClient({ chain: sepolia, transport });
+  return (await publicClient.readContract({
+    address: env.TAARS_BILLING_ADDRESS as Address,
+    abi: billingAbi,
+    functionName: 'ownerBalance',
+    args: [tokenId],
+  })) as bigint;
+}
+
+export const _internal = { expectedUsdFromRate, AUDIT_FILE, AUDIT_DIR };

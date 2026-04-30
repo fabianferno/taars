@@ -6,6 +6,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:0g": "hardhat run scripts/deploy.ts --network og-testnet",
+    "deploy:billing": "hardhat run scripts/deploy-billing.ts --network sepolia",
     "demo:mint": "hardhat run scripts/demo-mint.ts --network og-testnet"
   },
   "devDependencies": {

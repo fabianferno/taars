@@ -28,6 +28,12 @@ export default function Navbar() {
             Explore
           </Link>
           <Link
+            href="/earnings"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+          >
+            Earnings
+          </Link>
+          <Link
             href="#cta"
             className="text-sm font-medium bg-accent hover:bg-accent-light text-white px-4 py-2 rounded-full transition-colors"
           >

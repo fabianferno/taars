@@ -33,3 +33,7 @@ brand-moodboard/
 .env.bak*
 .env.local
 *.bak
+
+# Audit logs
+.audit/
+**/.audit/

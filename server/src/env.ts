@@ -20,6 +20,13 @@ const schema = z.object({
   TAARS_INFT_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   PARENT_ENS_NAME: z.string().default('taars.eth'),
   OPENVOICE_URL: z.string().url().default('http://localhost:5005'),
+  DISCORD_BOT_URL: z.string().url().default('http://localhost:8090'),
+  // chat / x402 / billing
+  OPENAI_API_KEY: z.string().optional(),
+  OG_BROKER_PROVIDER: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  TAARS_BILLING_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  MOCK_USDC_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  MOCK_INFT_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 });
 
 export const env = schema.parse(process.env);

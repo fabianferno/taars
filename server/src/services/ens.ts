@@ -154,6 +154,13 @@ const RESOLVER_ABI = [
     ],
     outputs: [{ name: '', type: 'string' }],
   },
+  {
+    name: 'multicall',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'data', type: 'bytes[]' }],
+    outputs: [{ name: 'results', type: 'bytes[]' }],
+  },
 ] as const;
 
 interface Clients {
@@ -339,6 +346,34 @@ export async function setTexts(
     out.push(await setText(fullName, r.key, r.value));
   }
   return out;
+}
+
+/// Atomic batch via PublicResolver.multicall — all records in 1 tx.
+export async function setTextsMulticall(
+  fullName: string,
+  records: Array<{ key: string; value: string }>
+): Promise<Hash> {
+  const { walletClient, account, publicClient } = makeClients();
+  const node = namehash(normalize(fullName));
+  const setTextSelector = '0x10f13a8c'; // keccak256("setText(bytes32,string,string)") first 4 bytes
+  const { encodeAbiParameters } = await import('viem');
+  const calls = records.map((r) => {
+    const params = encodeAbiParameters(
+      [{ type: 'bytes32' }, { type: 'string' }, { type: 'string' }],
+      [node, r.key, r.value]
+    );
+    return (setTextSelector + params.slice(2)) as `0x${string}`;
+  });
+  const txHash = await walletClient.writeContract({
+    address: PUBLIC_RESOLVER,
+    abi: RESOLVER_ABI,
+    functionName: 'multicall',
+    args: [calls],
+    account,
+    chain: sepolia,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  return txHash;
 }
 
 export async function readText(fullName: string, key: string): Promise<string> {

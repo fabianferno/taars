@@ -66,7 +66,11 @@ mint.post('/', async (c) => {
       { description: 'skills.json', content: skills },
       { description: 'voice.json', content: voiceConfig },
     ]);
-    const storageRoot = merkleRoot;
+    // Use the soul.md downloadable root as the ENS taars.storage value so
+    // /chat can fetchAndDecrypt(taars.storage) at session-start. The
+    // composite merkle root is also recorded onchain via INFT IntelligentData[].
+    const storageRoot = intelligentData[0].storageRoot;
+    void merkleRoot;
 
     // 4. Mint INFT on 0G Chain.
     step = 'inft';

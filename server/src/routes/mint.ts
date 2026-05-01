@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
+import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import type { MintRequest, MintResponse, MintErrorResponse } from '@taars/sdk';
 import { trainVoiceProfile } from '../services/voice.js';
 import { uploadEncryptedBundleToZeroG } from '../services/storage.js';
 import { mintINFT } from '../services/inft.js';
-import { createSubname, setTexts } from '../services/ens.js';
+import { createSubname, setTextsMulticall } from '../services/ens.js';
 import { env } from '../env.js';
 
 const personalitySchema = z.object({
@@ -112,7 +113,8 @@ mint.post('/', async (c) => {
     // To write text records the deployer must own the subname. Re-create the subname as deployer-owned
     // for now if it isn't. (createSubname is idempotent.)
     void sub; // (sub.owner may be the user; we rely on deployer to be operator on parent).
-    const txEnsTextRecords = await setTexts(fullEns, records);
+    const multicallTx = await setTextsMulticall(fullEns, records);
+    const txEnsTextRecords = [multicallTx];
 
     const response: MintResponse = {
       ok: true,
@@ -140,6 +142,143 @@ mint.post('/', async (c) => {
     console.error('[mint failed]', err);
     return c.json(err, 500);
   }
+});
+
+/// Streaming variant of /mint. Emits one JSON-line event per pipeline step:
+///   {"type":"step","step":"voice","status":"running"}
+///   {"type":"step","step":"voice","status":"done","detail":{...}}
+///   ...
+///   {"type":"done","result":<MintResponse>}
+///   or {"type":"error","step":"...","error":"..."}
+mint.post('/stream', async (c) => {
+  const body = (await c.req.json()) as MintRequest;
+  const parsed = requestSchema.parse(body);
+  return stream(c, async (out) => {
+    out.onAbort(() => {
+      console.warn('[mint/stream] aborted by client');
+    });
+    let step: MintErrorResponse['step'] = 'unknown';
+    const emit = async (obj: object) => {
+      await out.write(JSON.stringify(obj) + '\n');
+    };
+    try {
+      step = 'voice';
+      await emit({ type: 'step', step, status: 'running', label: 'Training voice profile' });
+      const voiceBytes = Buffer.from(parsed.voiceSampleBase64, 'base64');
+      const voice = await trainVoiceProfile(parsed.ensLabel, voiceBytes, parsed.voiceSampleMime);
+      await emit({ type: 'step', step, status: 'done', detail: { voiceId: voice.voiceId } });
+
+      step = 'encrypt';
+      await emit({ type: 'step', step, status: 'running', label: 'Encrypting artifacts' });
+      const soul = buildSoul(parsed);
+      const skills = JSON.stringify({ skills: [], created_at: Date.now() }, null, 2);
+      const voiceConfig = JSON.stringify(
+        {
+          voice_id: voice.voiceId,
+          provider: voice.provider,
+          sample_rate: voice.sampleRate,
+          ens_label: parsed.ensLabel,
+        },
+        null,
+        2
+      );
+      await emit({ type: 'step', step, status: 'done' });
+
+      step = 'storage';
+      await emit({ type: 'step', step, status: 'running', label: 'Uploading to 0G Storage' });
+      const { intelligentData, merkleRoot } = await uploadEncryptedBundleToZeroG([
+        { description: 'soul.md', content: soul },
+        { description: 'skills.json', content: skills },
+        { description: 'voice.json', content: voiceConfig },
+      ]);
+      const storageRoot = intelligentData[0].storageRoot;
+      void merkleRoot;
+      await emit({
+        type: 'step',
+        step,
+        status: 'done',
+        detail: { storageRoot, blobs: intelligentData.length },
+      });
+
+      step = 'inft';
+      await emit({ type: 'step', step, status: 'running', label: 'Minting INFT on 0G Chain' });
+      const { tokenId, txHash: txInft } = await mintINFT(
+        parsed.ownerAddress as `0x${string}`,
+        intelligentData.map((d) => ({ dataDescription: d.dataDescription, dataHash: d.dataHash }))
+      );
+      await emit({
+        type: 'step',
+        step,
+        status: 'done',
+        detail: { tokenId: tokenId.toString(), txHash: txInft },
+      });
+
+      step = 'ens.subname';
+      await emit({
+        type: 'step',
+        step,
+        status: 'running',
+        label: `Creating ${parsed.ensLabel}.${env.PARENT_ENS_NAME}`,
+      });
+      const fullEns = `${parsed.ensLabel}.${env.PARENT_ENS_NAME}`;
+      const sub = await createSubname(parsed.ensLabel, parsed.ownerAddress as `0x${string}`);
+      await emit({ type: 'step', step, status: 'done', detail: { txHash: sub.txHash ?? null } });
+
+      step = 'ens.records';
+      await emit({
+        type: 'step',
+        step,
+        status: 'running',
+        label: 'Writing ENS text records',
+      });
+      const records: Array<{ key: string; value: string }> = [
+        { key: 'taars.inft', value: `0g:${env.OG_CHAIN_ID}:${tokenId.toString()}` },
+        { key: 'taars.storage', value: storageRoot },
+        { key: 'taars.created', value: String(Math.floor(Date.now() / 1000)) },
+        { key: 'taars.version', value: 'taars-v1' },
+        { key: 'taars.price', value: parsed.pricePerMinUsd },
+        { key: 'taars.currency', value: 'USDC' },
+        { key: 'taars.network', value: 'sepolia' },
+        { key: 'taars.voice', value: voice.voiceId },
+        {
+          key: 'description',
+          value:
+            parsed.description ?? `taars replica created ${new Date().toISOString().slice(0, 10)}`,
+        },
+        { key: 'url', value: `https://taars.app/${parsed.ensLabel}` },
+      ];
+      if (parsed.avatarUrl) records.push({ key: 'avatar', value: parsed.avatarUrl });
+      const multicallTx = await setTextsMulticall(fullEns, records);
+      await emit({
+        type: 'step',
+        step,
+        status: 'done',
+        detail: { txHash: multicallTx, recordCount: records.length },
+      });
+
+      const response: MintResponse = {
+        ok: true,
+        tokenId: tokenId.toString(),
+        storageRoot,
+        intelligentData: intelligentData.map((d) => ({
+          dataDescription: d.dataDescription,
+          dataHash: d.dataHash,
+          storageRoot: d.storageRoot,
+        })),
+        ensLabel: parsed.ensLabel,
+        ensFullName: fullEns,
+        voiceProfileId: voice.voiceId,
+        txInft,
+        txEnsSubname: sub.txHash ?? '0x',
+        txEnsTextRecords: [multicallTx],
+      };
+      await emit({ type: 'done', result: response });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      console.error('[mint/stream failed]', step, error);
+      await emit({ type: 'error', step, error });
+    }
+  });
 });
 
 function buildSoul(parsed: z.infer<typeof requestSchema>): string {

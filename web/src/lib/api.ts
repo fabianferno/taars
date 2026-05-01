@@ -32,6 +32,72 @@ export async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Streaming /mint
+// ---------------------------------------------------------------------------
+
+export type MintStepKey =
+  | 'voice'
+  | 'encrypt'
+  | 'storage'
+  | 'inft'
+  | 'ens.subname'
+  | 'ens.records';
+
+export type MintStreamEvent =
+  | {
+      type: 'step';
+      step: MintStepKey;
+      status: 'running' | 'done';
+      label?: string;
+      detail?: Record<string, unknown>;
+    }
+  | { type: 'done'; result: MintResponse }
+  | { type: 'error'; step: MintStepKey | 'unknown'; error: string };
+
+export async function mintReplicaStream(
+  req: MintRequest,
+  onEvent: (e: MintStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<MintResponse> {
+  const res = await fetch(`${SERVER_URL}/mint/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`mint/stream failed: ${res.status} ${res.statusText}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let final: MintResponse | null = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      let evt: MintStreamEvent;
+      try {
+        evt = JSON.parse(line) as MintStreamEvent;
+      } catch {
+        console.warn('[mintStream] bad JSON line', line);
+        continue;
+      }
+      onEvent(evt);
+      if (evt.type === 'done') final = evt.result;
+      if (evt.type === 'error') throw new Error(`${evt.step}: ${evt.error}`);
+    }
+  }
+  if (!final) throw new Error('mint/stream ended without a result');
+  return final;
+}
+
+// ---------------------------------------------------------------------------
 // Chat APIs
 // ---------------------------------------------------------------------------
 

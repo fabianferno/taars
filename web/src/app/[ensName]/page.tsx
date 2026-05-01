@@ -1,6 +1,7 @@
 'use client';
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
+import TopNav from '@/components/TopNav';
 import { resolveTaarsLabel, type ReplicaProfile } from '@/lib/ens';
 import { ChatPanel } from '@/components/Chat/ChatPanel';
 
@@ -36,18 +37,24 @@ export default function ProfilePage({ params }: PageProps) {
 
   if (loading)
     return (
-      <main className="mx-auto max-w-3xl p-6 pt-12 text-neutral-400">
-        Resolving {ensName}.taars.eth…
-      </main>
+      <>
+        <TopNav />
+        <main className="mx-auto max-w-3xl px-6 pt-24 pb-12 text-muted-foreground">
+          Resolving {ensName}.taars.eth&hellip;
+        </main>
+      </>
     );
   if (error)
     return (
-      <main className="mx-auto max-w-3xl p-6 pt-12">
-        <Link href="/" className="text-sm text-neutral-400 hover:text-neutral-100">
-          &larr; Home
-        </Link>
-        <p className="mt-4 text-red-400">{error}</p>
-      </main>
+      <>
+        <TopNav />
+        <main className="mx-auto max-w-3xl px-6 pt-24 pb-12">
+          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
+            &larr; Home
+          </Link>
+          <p className="mt-4 text-destructive">{error}</p>
+        </main>
+      </>
     );
   if (!profile) return null;
 
@@ -57,10 +64,12 @@ export default function ProfilePage({ params }: PageProps) {
   const initials = profile.ensLabel.slice(0, 2).toUpperCase();
 
   return (
-    <main className="mx-auto max-w-3xl p-6 pt-12">
+    <>
+      <TopNav />
+      <main className="mx-auto max-w-3xl px-6 pt-24 pb-20">
       <Link
         href="/"
-        className="mb-4 inline-block text-sm text-neutral-400 hover:text-neutral-100"
+        className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
       >
         &larr; Home
       </Link>
@@ -132,7 +141,8 @@ export default function ProfilePage({ params }: PageProps) {
 
       {/* Chat panel */}
       <ChatPanel profile={profile} />
-    </main>
+      </main>
+    </>
   );
 }
 

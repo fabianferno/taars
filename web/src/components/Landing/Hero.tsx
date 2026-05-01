@@ -3,17 +3,39 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Compass } from "lucide-react";
 import Link from "next/link";
+import DotField from "@/components/DotField";
 
 export default function Hero() {
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden">
-      {/* Subtle radial gradient background */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-accent/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
+      <div className="absolute inset-0 z-0 min-h-full pointer-events-none">
+        <DotField
+          bulgeOnly={false}
+          dotRadius={5}
+          dotSpacing={20}
+          cursorRadius={420}
+          waveAmplitude={2.25}
+
+          bulgeStrength={67}
+          glowRadius={5}
+          sparkle={true}
+
+          cursorForce={0.1}
+
+          gradientFrom="rgba(234, 88, 12, 0.42)"
+          gradientTo="rgba(234, 88, 12, 0.42)"
+          glowColor="#ffffff"
+        />
       </div>
 
-      <div className="relative max-w-4xl mx-auto px-6 text-center">
+      {/* Subtle radial gradient vignette */}
+      <div className="absolute inset-0 pointer-events-none z-[1]">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-accent/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-transparent to-background/60" />
+      </div>
+
+      <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
         {/* Pill badge */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

@@ -10,7 +10,13 @@ export default function Footer() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-8">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
-            <Image src="/logo.svg" alt="taars" width={24} height={24} />
+            <Image
+              src="/taars-logo.jpg"
+              alt="Taars"
+              width={24}
+              height={24}
+              className="rounded-sm"
+            />
             <span className="font-coolvetica text-lg text-foreground">
               taars
             </span>

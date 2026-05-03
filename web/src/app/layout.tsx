@@ -19,6 +19,7 @@ const coolvetica = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://taars.crevn.xyz'),
   title: 'taars - Your AI Replica. Your Identity. Your Rules.',
   description:
     'Creator-owned AI replicas. Your voice, your ENS name, your INFT.',

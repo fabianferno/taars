@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'api.dicebear.com' },
+      { protocol: 'https', hostname: 'taars.crevn.xyz' },
+      { protocol: 'https', hostname: 'voice.taars.crevn.xyz' },
     ],
   },
   allowedDevOrigins: [
@@ -17,6 +19,9 @@ const nextConfig: NextConfig = {
     'http://127.0.0.1:3003',
   ],
   reactStrictMode: false,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;

@@ -33,17 +33,7 @@ module.exports = {
       error_file: '/var/log/taars/discord.err.log',
       time: true,
     },
-    {
-      name: 'taars-openvoice',
-      cwd: path.join(repoRoot, 'openvoice'),
-      script: 'python3',
-      args: 'http_server.py',
-      interpreter: 'none',
-      env: { PORT: '5005' },
-      max_memory_restart: '2G',
-      out_file: '/var/log/taars/openvoice.out.log',
-      error_file: '/var/log/taars/openvoice.err.log',
-      time: true,
-    },
+    // OpenVoice runs on the dev machine (Tailscale 100.82.90.55:5005).
+    // EC2 nginx proxies voice.taars.crevn.xyz -> that host. See deploy/nginx/taars.conf.
   ],
 };

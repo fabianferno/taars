@@ -54,6 +54,7 @@ export function DiscordDeployPanel({
   const [open, setOpen] = useState(false);
   const [guildId, setGuildId] = useState('');
   const [channelId, setChannelId] = useState('');
+  const [textChannelId, setTextChannelId] = useState('');
   const [deploy, setDeploy] = useState<DiscordDeployStartResponse | null>(null);
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
@@ -143,6 +144,7 @@ export function DiscordDeployPanel({
         ensLabel,
         guildId: guildId.trim(),
         channelId: channelId.trim(),
+        textChannelId: textChannelId.trim(),
         ownerAddress: wallet.address as `0x${string}`,
       });
       setDeploy(res);
@@ -298,6 +300,14 @@ export function DiscordDeployPanel({
                     className="w-full rounded-lg border border-surface-dark/70 bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-indigo-500 focus:outline-none"
                   />
                 </Field>
+                <Field label="Text Channel ID" hint="Right-click the text channel where mentions should reply → Copy Channel ID">
+                  <input
+                    value={textChannelId}
+                    onChange={(e) => setTextChannelId(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="123456789012345678"
+                    className="w-full rounded-lg border border-surface-dark/70 bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-indigo-500 focus:outline-none"
+                  />
+                </Field>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Make sure the taars bot is invited to your server with{' '}
@@ -309,7 +319,7 @@ export function DiscordDeployPanel({
               <button
                 type="button"
                 onClick={handleStart}
-                disabled={starting || !guildId || !channelId}
+                disabled={starting || !guildId || !channelId || !textChannelId}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {starting ? (

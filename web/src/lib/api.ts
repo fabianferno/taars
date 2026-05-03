@@ -244,6 +244,7 @@ export interface DiscordDeployStartRequest {
   ensLabel: string;
   guildId: string;
   channelId: string;
+  textChannelId: string;
   ownerAddress: `0x${string}`;
 }
 

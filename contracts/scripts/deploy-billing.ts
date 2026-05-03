@@ -6,13 +6,14 @@ import { resolve } from "path";
  * Deploys the per-minute billing stack to (typically) Sepolia:
  *
  *   1. MockUSDC (open mint, 6 decimals)  — testnet faucet token
- *   2. MockINFT (deployer-restricted mint) — mirrors taars Agent INFT ownership.
- *      Required because the real TaarsAgentNFT is on 0G testnet, and the
- *      billing contract calls `IERC721(inft).ownerOf(tokenId)` — which cannot
- *      be done cross-chain. The off-chain pipeline mints matching tokenIds
- *      on this MockINFT to mirror authoritative ownership from 0G.
- *   3. TaarsBilling wired to (MockUSDC, MockINFT) with deployer as
- *      treasury/oracle/owner.
+ *   2. TaarsBilling wired to MockUSDC with deployer as
+ *      treasury / oracle / owner.
+ *
+ * Billing is now ORACLE-ONLY: it does not read INFT ownership on-chain. The
+ * server (oracle) verifies real INFT ownership against the canonical 0G
+ * TaarsAgentNFT contract and supplies the owner address when calling
+ * `claimRevenueFor`. This removes the cross-chain mirror requirement that
+ * MockINFT used to satisfy.
  *
  * Writes the addresses to `contracts/deployments/<network>.billing.json`.
  *
@@ -33,29 +34,12 @@ async function main() {
   const usdcAddress = await usdc.getAddress();
   console.log("MockUSDC deployed to:", usdcAddress);
 
-  // 2. MockINFT (Sepolia mirror of the on-0G TaarsAgentNFT)
-  // If TAARS_INFT_ADDRESS is set AND points to an INFT live on this network,
-  // we re-use it; otherwise we deploy a fresh MockINFT and use that.
-  let inftAddress = process.env.TAARS_INFT_ADDRESS ?? "";
-  let mockInftDeployed = false;
-  if (!inftAddress) {
-    const Inft = await ethers.getContractFactory("MockINFT");
-    const inft = await Inft.deploy(deployer.address);
-    await inft.waitForDeployment();
-    inftAddress = await inft.getAddress();
-    mockInftDeployed = true;
-    console.log("MockINFT deployed to:", inftAddress);
-  } else {
-    console.log("Using existing INFT at:", inftAddress);
-  }
-
-  // 3. TaarsBilling
+  // 2. TaarsBilling (oracle-attested ownership; no on-chain INFT dep)
   const Billing = await ethers.getContractFactory("TaarsBilling");
   const billing = await Billing.deploy(
     usdcAddress,
     deployer.address, // treasury
     deployer.address, // oracle (server signer; rotate via setOracle later)
-    inftAddress,
     deployer.address // owner
   );
   await billing.waitForDeployment();
@@ -73,8 +57,6 @@ async function main() {
     chainId: Number(network.config.chainId ?? 0),
     addresses: {
       mockUsdc: usdcAddress,
-      mockInft: mockInftDeployed ? inftAddress : null,
-      inft: inftAddress,
       billing: billingAddress,
     },
     deployer: deployer.address,

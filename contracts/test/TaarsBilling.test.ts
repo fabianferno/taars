@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import type { TaarsBilling, MockUSDC, MockINFT } from "../typechain-types";
+import type { TaarsBilling, MockUSDC } from "../typechain-types";
 
 const RATE = 6_000_000n; // 6 USDC per minute (6 decimals)
 const ONE_HOUR = 3600n;
@@ -19,19 +19,11 @@ describe("TaarsBilling", () => {
     const usdc = (await Usdc.deploy()) as unknown as MockUSDC;
     await usdc.waitForDeployment();
 
-    const Inft = await ethers.getContractFactory("MockINFT");
-    const inft = (await Inft.deploy(owner.address)) as unknown as MockINFT;
-    await inft.waitForDeployment();
-
-    // mint tokenId 1 to agentOwner
-    await inft.connect(owner).mint(agentOwner.address, TOKEN_ID);
-
     const Billing = await ethers.getContractFactory("TaarsBilling");
     const billing = (await Billing.deploy(
       await usdc.getAddress(),
       treasury.address,
       oracle.address,
-      await inft.getAddress(),
       owner.address
     )) as unknown as TaarsBilling;
     await billing.waitForDeployment();
@@ -43,9 +35,12 @@ describe("TaarsBilling", () => {
       .connect(user)
       .approve(await billing.getAddress(), ethers.MaxUint256);
 
+    // Off-chain (oracle-attested) ownership tracking. The contract no longer
+    // reads ERC721 ownership; the oracle is the source of truth.
+    let inftOwner: string = agentOwner.address;
+
     return {
       usdc,
-      inft,
       billing,
       owner,
       treasury,
@@ -54,17 +49,21 @@ describe("TaarsBilling", () => {
       creator,
       user,
       other,
+      getInftOwner: () => inftOwner,
+      setInftOwner: (addr: string) => {
+        inftOwner = addr;
+      },
     };
   }
 
   describe("setRate", () => {
-    it("requires the INFT owner of that tokenId", async () => {
-      const { billing, agentOwner, other } = await deploy();
+    it("only callable by oracle", async () => {
+      const { billing, oracle, other } = await deploy();
       await expect(
         billing.connect(other).setRate(TOKEN_ID, RATE)
-      ).to.be.revertedWith("TaarsBilling: not token owner");
+      ).to.be.revertedWith("TaarsBilling: not oracle");
 
-      await expect(billing.connect(agentOwner).setRate(TOKEN_ID, RATE))
+      await expect(billing.connect(oracle).setRate(TOKEN_ID, RATE))
         .to.emit(billing, "RateSet")
         .withArgs(TOKEN_ID, RATE);
 
@@ -74,8 +73,8 @@ describe("TaarsBilling", () => {
 
   describe("startSession", () => {
     it("records snapshot rate; cannot reuse sessionId", async () => {
-      const { billing, agentOwner, user } = await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      const { billing, oracle, user } = await deploy();
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
 
       const sessionId = sid("session-1");
       await expect(billing.connect(user).startSession(sessionId, TOKEN_ID))
@@ -89,7 +88,7 @@ describe("TaarsBilling", () => {
       expect(s.settled).to.equal(false);
 
       // bumping the rate after start does NOT affect the snapshot
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE * 10n);
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE * 10n);
       const s2 = await billing.getSession(sessionId);
       expect(s2.ratePerMinute).to.equal(RATE);
 
@@ -102,8 +101,8 @@ describe("TaarsBilling", () => {
 
   describe("settleSession", () => {
     it("only callable by oracle", async () => {
-      const { billing, agentOwner, user, other } = await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      const { billing, oracle, user, other } = await deploy();
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
       const sessionId = sid("session-only-oracle");
       await billing.connect(user).startSession(sessionId, TOKEN_ID);
 
@@ -115,9 +114,9 @@ describe("TaarsBilling", () => {
     });
 
     it("transfers correct amount and splits 90/7/3 with creator set", async () => {
-      const { billing, owner, oracle, agentOwner, creator, user, usdc, treasury } =
+      const { billing, owner, oracle, creator, user, usdc, treasury } =
         await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
       await billing.connect(owner).setCreator(TOKEN_ID, creator.address);
 
       const sessionId = sid("session-split-90-7-3");
@@ -168,8 +167,8 @@ describe("TaarsBilling", () => {
     });
 
     it("with no creator, the 3% folds into owner share (effectively 93/7/0)", async () => {
-      const { billing, oracle, agentOwner, user } = await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      const { billing, oracle, user } = await deploy();
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
 
       const sessionId = sid("session-no-creator");
       await billing.connect(user).startSession(sessionId, TOKEN_ID);
@@ -198,8 +197,8 @@ describe("TaarsBilling", () => {
     });
 
     it("rejects unknown session and endedAt < startedAt", async () => {
-      const { billing, oracle, agentOwner, user } = await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      const { billing, oracle, user } = await deploy();
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
 
       await expect(
         billing.connect(oracle).settleSession(sid("missing"), 1n)
@@ -214,8 +213,8 @@ describe("TaarsBilling", () => {
     });
 
     it("partial-minute duration prorates by seconds (rate * seconds / 60)", async () => {
-      const { billing, oracle, agentOwner, user } = await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      const { billing, oracle, user } = await deploy();
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
 
       const sessionId = sid("session-30s");
       await billing.connect(user).startSession(sessionId, TOKEN_ID);
@@ -229,19 +228,18 @@ describe("TaarsBilling", () => {
     });
   });
 
-  describe("claimRevenue", () => {
-    it("pays the current INFT owner, even after transfer", async () => {
+  describe("claimRevenueFor", () => {
+    it("oracle pays the verified INFT owner (mirrors post-transfer ownership)", async () => {
       const {
         billing,
-        owner,
         oracle,
-        agentOwner,
         user,
         usdc,
-        inft,
         other,
+        setInftOwner,
+        getInftOwner,
       } = await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
 
       const sessionId = sid("session-claim");
       await billing.connect(user).startSession(sessionId, TOKEN_ID);
@@ -253,17 +251,14 @@ describe("TaarsBilling", () => {
       const toOwner = (expected * 9300n) / 10000n; // no creator set => 93%
       expect(await billing.ownerBalance(TOKEN_ID)).to.equal(toOwner);
 
-      // transfer the INFT to `other` BEFORE claim — claim should pay `other`
-      await inft
-        .connect(agentOwner)
-        ["safeTransferFrom(address,address,uint256)"](
-          agentOwner.address,
-          other.address,
-          TOKEN_ID
-        );
+      // off-chain "transfer" of INFT to `other` BEFORE claim — oracle reads
+      // canonical 0G ownership and supplies `other`.
+      setInftOwner(other.address);
 
       const before = await usdc.balanceOf(other.address);
-      await expect(billing.connect(owner).claimRevenue(TOKEN_ID))
+      await expect(
+        billing.connect(oracle).claimRevenueFor(TOKEN_ID, getInftOwner())
+      )
         .to.emit(billing, "RevenueClaimed")
         .withArgs(TOKEN_ID, other.address, toOwner);
 
@@ -272,16 +267,26 @@ describe("TaarsBilling", () => {
       expect(await billing.ownerBalance(TOKEN_ID)).to.equal(0n);
 
       await expect(
-        billing.connect(owner).claimRevenue(TOKEN_ID)
+        billing.connect(oracle).claimRevenueFor(TOKEN_ID, getInftOwner())
       ).to.be.revertedWith("TaarsBilling: nothing to claim");
+    });
+
+    it("only callable by oracle; rejects zero owner", async () => {
+      const { billing, oracle, agentOwner, other } = await deploy();
+      await expect(
+        billing.connect(other).claimRevenueFor(TOKEN_ID, agentOwner.address)
+      ).to.be.revertedWith("TaarsBilling: not oracle");
+
+      await expect(
+        billing.connect(oracle).claimRevenueFor(TOKEN_ID, ethers.ZeroAddress)
+      ).to.be.revertedWith("TaarsBilling: owner=0");
     });
   });
 
   describe("claimCreatorRoyalty", () => {
     it("pays the creator address", async () => {
-      const { billing, owner, oracle, agentOwner, creator, user, usdc } =
-        await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      const { billing, owner, oracle, creator, user, usdc } = await deploy();
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
       await billing.connect(owner).setCreator(TOKEN_ID, creator.address);
 
       const sessionId = sid("session-royalty");
@@ -305,9 +310,8 @@ describe("TaarsBilling", () => {
 
   describe("claimTreasury", () => {
     it("only owner; pays accrued treasury balance to `to`", async () => {
-      const { billing, owner, oracle, agentOwner, user, usdc, other } =
-        await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      const { billing, owner, oracle, user, usdc, other } = await deploy();
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
 
       const sessionId = sid("session-treasury");
       await billing.connect(user).startSession(sessionId, TOKEN_ID);
@@ -343,8 +347,9 @@ describe("TaarsBilling", () => {
         user,
         usdc,
         treasury,
+        getInftOwner,
       } = await deploy();
-      await billing.connect(agentOwner).setRate(TOKEN_ID, RATE);
+      await billing.connect(oracle).setRate(TOKEN_ID, RATE);
       await billing.connect(owner).setCreator(TOKEN_ID, creator.address);
 
       const sessionId = sid("session-roundtrip");
@@ -361,7 +366,7 @@ describe("TaarsBilling", () => {
       const toOwner = expected - toTreasury - toCreator;
 
       // claim everything
-      await billing.connect(user).claimRevenue(TOKEN_ID);
+      await billing.connect(oracle).claimRevenueFor(TOKEN_ID, getInftOwner());
       await billing.connect(creator).claimCreatorRoyalty();
       await billing.connect(owner).claimTreasury(treasury.address);
 

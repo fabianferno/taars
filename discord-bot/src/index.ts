@@ -25,6 +25,64 @@ interface DeployState {
 
 const deploys = new Map<string, DeployState>(); // keyed by guildId
 
+// Minimal RIFF/WAVE header for PCM s16le audio.
+function wrapWav(pcm: Buffer, sampleRate: number, channels: number): Buffer {
+  const byteRate = sampleRate * channels * 2;
+  const blockAlign = channels * 2;
+  const dataSize = pcm.length;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + dataSize, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);          // PCM chunk size
+  header.writeUInt16LE(1, 20);           // format = PCM
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(16, 34);          // bits per sample
+  header.write('data', 36);
+  header.writeUInt32LE(dataSize, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+async function transcribePcm(state: DeployState, pcm: Buffer): Promise<string> {
+  const wav = wrapWav(pcm, 48000, 2);
+  const form = new FormData();
+  // Node's global File / Blob (Node ≥ 20). Discord-bot already runs on this.
+  const blob = new Blob([new Uint8Array(wav)], { type: 'audio/wav' });
+  form.append('audio', blob, 'turn.wav');
+  const res = await fetch(`${env.TAARS_SERVER_URL}/chat/transcribe`, {
+    method: 'POST',
+    headers: { 'X-Taars-Session': state.sessionId },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`transcribe ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as { ok: boolean; text?: string };
+  return (json.text ?? '').trim();
+}
+
+async function agentReply(state: DeployState, userText: string): Promise<string> {
+  const res = await fetch(`${env.TAARS_SERVER_URL}/chat/message`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Taars-Session': state.sessionId,
+    },
+    body: JSON.stringify({ sessionId: state.sessionId, message: userText }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`chat/message ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as { ok: boolean; text?: string };
+  return (json.text ?? '').trim();
+}
+
 // ----- discord state -----
 
 let discordReady = false;

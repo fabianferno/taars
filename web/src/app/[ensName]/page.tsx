@@ -5,6 +5,12 @@ import TopNav from '@/components/TopNav';
 import { resolveTaarsLabel, type ReplicaProfile } from '@/lib/ens';
 import { ChatPanel } from '@/components/Chat/ChatPanel';
 import { DiscordDeployPanel } from '@/components/Deploy/DiscordDeployPanel';
+import {
+  PhoneCallComingSoon,
+  SlackComingSoon,
+  TelegramComingSoon,
+  WhatsAppComingSoon,
+} from '@/components/Deploy/ComingSoonDeployPanel';
 
 type PageProps = { params: Promise<{ ensName: string }> };
 
@@ -143,12 +149,16 @@ export default function ProfilePage({ params }: PageProps) {
       {/* Chat panel */}
       <ChatPanel profile={profile} />
 
-      {/* Discord VC deploy panel */}
+      {/* Deploy / connectors */}
       <DiscordDeployPanel
         ensLabel={profile.ensLabel}
         ensFullName={profile.ensFullName}
         basePricePerMinUsd={r['taars.price'] ?? '0'}
       />
+      <TelegramComingSoon />
+      <WhatsAppComingSoon />
+      <PhoneCallComingSoon />
+      <SlackComingSoon />
       </main>
     </>
   );

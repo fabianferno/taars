@@ -17,6 +17,7 @@ export interface ChatSession {
   messages: ChatMessage[];
   systemPrompt: string;
   voiceId: string;
+  tokenId: string; // INFT tokenId from taars.inft ENS record; '0' when missing
 }
 
 export interface StartSessionOpts {
@@ -48,7 +49,19 @@ export function _resetSessions(): void {
   hooks = {};
 }
 
-const ENS_KEYS = ['taars.storage', 'taars.voice', 'taars.price', 'taars.version'] as const;
+const ENS_KEYS = [
+  'taars.storage',
+  'taars.voice',
+  'taars.price',
+  'taars.version',
+  'taars.inft',
+] as const;
+
+function parseTokenId(inftRef: string | undefined): string {
+  if (!inftRef) return '0';
+  const tail = inftRef.split(':').pop() ?? '';
+  return /^\d+$/.test(tail) ? tail : '0';
+}
 
 async function defaultReadEnsRecords(fullName: string): Promise<Record<string, string>> {
   return readAllTexts(fullName, ENS_KEYS as unknown as string[]);
@@ -119,6 +132,7 @@ export async function startSession(opts: StartSessionOpts): Promise<ChatSession>
   const storageRoot = records['taars.storage'] || '';
   const voiceId = records['taars.voice'] || ensLabel;
   const ratePerMinUsd = records['taars.price'] || '0';
+  const tokenId = parseTokenId(records['taars.inft']);
 
   let bundle: any = { personality: {}, voice: { voiceId } };
   if (storageRoot) {
@@ -145,6 +159,7 @@ export async function startSession(opts: StartSessionOpts): Promise<ChatSession>
     messages: [],
     systemPrompt,
     voiceId: bundle?.voice?.voiceId || voiceId,
+    tokenId,
   };
   sessions.set(sessionId, session);
   return session;

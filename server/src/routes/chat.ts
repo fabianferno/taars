@@ -11,7 +11,7 @@ import {
 } from '../services/sessions.js';
 import { getLLM, LLMUnavailableError, getLLMStatus, type ChatMessage } from '../services/llm.js';
 import { synthesize } from '../services/voice.js';
-import { settleSessionOnChain } from '../services/billing.js';
+import { settleSessionOnChain, startSessionOnChain } from '../services/billing.js';
 import { x402Required } from '../middleware/x402.js';
 
 export const chat = new Hono();
@@ -58,6 +58,15 @@ chat.post('/start', async (c) => {
       ensLabel: parsed.data.ensLabel,
       callerAddress: parsed.data.callerAddress,
     });
+    // Open the billing session on chain so /chat/end can settle it. Failure
+    // here shouldn't block chat; settleSessionOnChain will retry the open.
+    try {
+      await startSessionOnChain(session.sessionId, session.tokenId);
+    } catch (e) {
+      console.warn(
+        `[chat/start] startSessionOnChain failed for ${session.sessionId}: ${(e as Error).message?.slice(0, 200)}`
+      );
+    }
     return c.json({
       ok: true,
       sessionId: session.sessionId,
@@ -171,7 +180,7 @@ chat.post('/end', async (c) => {
     session.endedAt ?? Math.floor(Date.now() / 1000),
     session.ratePerMinUsd,
     durationSeconds,
-    '0',
+    session.tokenId,
     session.ensFullName
   ).catch((e) => ({ skipped: true as const, reason: (e as Error).message }));
 

@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { env } from '../env.js';
 import { readAllTexts } from '../services/ens.js';
-import { settleSessionOnChain } from '../services/billing.js';
+import { settleSessionOnChain, startSessionOnChain } from '../services/billing.js';
 import { fireKeeperhubWorkflow, KH_WORKFLOWS } from '../services/keeperhub.js';
 
 // ----- types -----
@@ -25,6 +25,7 @@ interface DiscordDeploy {
   endedAt?: number;
   status: DeployStatus;
   sessionId: `0x${string}`; // for billing parity with /chat sessions
+  tokenId: string; // INFT tokenId from taars.inft ENS record; '0' when missing
 }
 
 const deploys = new Map<string, DiscordDeploy>();
@@ -57,7 +58,14 @@ const ENS_KEYS = [
   'taars.deploy.discord',
   'taars.storage',
   'taars.version',
+  'taars.inft',
 ] as const;
+
+function parseTokenId(inftRef: string | undefined): string {
+  if (!inftRef) return '0';
+  const tail = inftRef.split(':').pop() ?? '';
+  return /^\d+$/.test(tail) ? tail : '0';
+}
 
 function rateForDiscord(records: Record<string, string>): string {
   const explicit = records['taars.deploy.discord'];
@@ -165,10 +173,12 @@ deploy.post('/discord', async (c) => {
 
   let voiceId = parsed.data.ensLabel;
   let ratePerMinUsd = '0';
+  let tokenId = '0';
   try {
     const records = await readAllTexts(ensFullName, ENS_KEYS as unknown as string[]);
     voiceId = records['taars.voice'] || voiceId;
     ratePerMinUsd = rateForDiscord(records);
+    tokenId = parseTokenId(records['taars.inft']);
   } catch (e) {
     console.warn(
       `[deploy/discord] ENS lookup failed for ${ensFullName}: ${(e as Error).message.slice(0, 120)}`
@@ -228,8 +238,25 @@ deploy.post('/discord', async (c) => {
     startedAt: Math.floor(Date.now() / 1000),
     status: 'active',
     sessionId,
+    tokenId,
   };
   deploys.set(deployId, record);
+
+  // Open the billing session on chain so /discord/end can settle it. The oracle
+  // wallet is the on-chain `caller`; at tokenId=0 the snapshot rate is 0 so no
+  // USDC moves at settle time. Don't fail the deploy if this errors.
+  try {
+    const startRes = await startSessionOnChain(sessionId, tokenId);
+    await appendAudit({ event: 'deploy.session_started', deployId, sessionId, tokenId, startRes });
+  } catch (e) {
+    await appendAudit({
+      event: 'deploy.session_start_failed',
+      deployId,
+      sessionId,
+      tokenId,
+      error: (e as Error).message?.slice(0, 200),
+    });
+  }
 
   // Fire KeeperHub Discord deploy lifecycle workflow (start event).
   const khStart = await fireKeeperhubWorkflow('discordDeploy', {
@@ -354,7 +381,7 @@ deploy.post('/discord/end', async (c) => {
       record.endedAt,
       record.ratePerMinUsd,
       deployedSeconds,
-      '0',
+      record.tokenId,
       record.ensFullName
     );
     if ('skipped' in r && r.skipped) {

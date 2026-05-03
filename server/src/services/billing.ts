@@ -10,6 +10,36 @@ import { getInftOwnerOnZeroG } from './inft.js';
 const billingAbi = [
   {
     type: 'function',
+    name: 'startSession',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'sessionId', type: 'bytes32' },
+      { name: 'tokenId', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'getSession',
+    stateMutability: 'view',
+    inputs: [{ name: 'sessionId', type: 'bytes32' }],
+    outputs: [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'tokenId', type: 'uint256' },
+          { name: 'caller', type: 'address' },
+          { name: 'startedAt', type: 'uint64' },
+          { name: 'endedAt', type: 'uint64' },
+          { name: 'ratePerMinute', type: 'uint128' },
+          { name: 'paid', type: 'uint256' },
+          { name: 'settled', type: 'bool' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'function',
     name: 'settleSession',
     stateMutability: 'nonpayable',
     inputs: [
@@ -92,16 +122,86 @@ function expectedUsdFromRate(ratePerMinUsd: string, durationSeconds: number): st
   return (rate * minutes).toFixed(4);
 }
 
-async function settleOnce(
-  sessionId: `0x${string}`,
-  endedAt: number,
-  ratePerMinUsd: string,
-  durationSeconds: number
-): Promise<SettleResult> {
+function billingClients() {
   const account = privateKeyToAccount(env.DEPLOYER_PRIVATE_KEY as `0x${string}`);
   const transport = http(env.SEPOLIA_RPC_URL);
   const publicClient = createPublicClient({ chain: sepolia, transport });
   const walletClient = createWalletClient({ chain: sepolia, transport, account });
+  return { account, publicClient, walletClient };
+}
+
+/// Open a billing session on chain. The oracle wallet calls this so it becomes
+/// the contract-side `caller` (the account that would owe USDC at settle time).
+/// At tokenId=0 the contract's snapshot rate is 0, so settlement transfers
+/// nothing — fine for free/server-funded flows like Discord deploys.
+/// Idempotent: if the contract already has the session, this is a no-op.
+export async function startSessionOnChain(
+  sessionId: `0x${string}`,
+  tokenId: string | bigint = 0n
+): Promise<{ skipped: true; reason: string } | { txHash: Hash } | { existing: true }> {
+  if (!env.TAARS_BILLING_ADDRESS) {
+    const out = { skipped: true as const, reason: 'TAARS_BILLING_ADDRESS not set' };
+    await appendAudit({ event: 'start.skipped', sessionId, ...out });
+    return out;
+  }
+  const { account, publicClient, walletClient } = billingClients();
+  try {
+    const existing = (await publicClient.readContract({
+      address: env.TAARS_BILLING_ADDRESS as Address,
+      abi: billingAbi,
+      functionName: 'getSession',
+      args: [sessionId],
+    })) as { caller: Address };
+    if (existing.caller && existing.caller !== '0x0000000000000000000000000000000000000000') {
+      await appendAudit({ event: 'start.existing', sessionId });
+      return { existing: true };
+    }
+  } catch {
+    // fall through to write
+  }
+  const tokenIdBig = typeof tokenId === 'bigint' ? tokenId : BigInt(tokenId || '0');
+  const txHash: Hash = await walletClient.writeContract({
+    address: env.TAARS_BILLING_ADDRESS as Address,
+    abi: billingAbi,
+    functionName: 'startSession',
+    args: [sessionId, tokenIdBig],
+    account,
+    chain: sepolia,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  await appendAudit({ event: 'start.success', sessionId, tokenId: tokenIdBig.toString(), txHash });
+  return { txHash };
+}
+
+async function settleOnce(
+  sessionId: `0x${string}`,
+  endedAt: number,
+  ratePerMinUsd: string,
+  durationSeconds: number,
+  tokenId: string
+): Promise<SettleResult> {
+  const { account, publicClient, walletClient } = billingClients();
+
+  // Make settle resilient: if startSession was never recorded (e.g. an older
+  // deploy that only minted a sessionId locally), open it now so the oracle
+  // can settle. Cheap on-chain read; only writes when missing.
+  try {
+    const existing = (await publicClient.readContract({
+      address: env.TAARS_BILLING_ADDRESS as Address,
+      abi: billingAbi,
+      functionName: 'getSession',
+      args: [sessionId],
+    })) as { caller: Address };
+    if (!existing.caller || existing.caller === '0x0000000000000000000000000000000000000000') {
+      await startSessionOnChain(sessionId, tokenId);
+    }
+  } catch (e) {
+    await appendAudit({
+      event: 'settle.precheck_failed',
+      sessionId,
+      error: (e as Error).message?.slice(0, 200),
+    });
+  }
 
   const txHash: Hash = await walletClient.writeContract({
     address: env.TAARS_BILLING_ADDRESS as Address,
@@ -144,7 +244,7 @@ export async function settleSessionOnChain(
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await appendAudit({ event: 'settle.attempt', attempt, sessionId, endedAt });
-      const r = await settleOnce(sessionId, endedAt, ratePerMinUsd, durationSeconds);
+      const r = await settleOnce(sessionId, endedAt, ratePerMinUsd, durationSeconds, tokenId);
       // Trigger KeeperHub billing-settle verifier workflow (real org workflow).
       // It reads getRevenue on Sepolia to attest that revenue actually accrued.
       const kh = await fireKeeperhubWorkflow('billingSettle', {

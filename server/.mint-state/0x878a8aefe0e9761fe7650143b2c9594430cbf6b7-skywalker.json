@@ -1,0 +1,47 @@
+{
+  "ensLabel": "skywalker",
+  "ownerAddress": "0x878a8aeFe0e9761fe7650143B2C9594430Cbf6b7",
+  "createdAt": 1777808389588,
+  "updatedAt": 1777808496939,
+  "voice": {
+    "voiceId": "skywalker",
+    "provider": "openvoice",
+    "sampleRate": 22050
+  },
+  "storage": {
+    "intelligentData": [
+      {
+        "dataDescription": "soul.md",
+        "dataHash": "0xc2f9e0c9916a6c635e7a3b015d8062b656007608bd875633db83febbc5e1cd74",
+        "storageRoot": "0xc2f9e0c9916a6c635e7a3b015d8062b656007608bd875633db83febbc5e1cd74"
+      },
+      {
+        "dataDescription": "skills.json",
+        "dataHash": "0x31efd213b32866131a81d1e0b6229a634c6fc8d3179591a8ee490f34703974ad",
+        "storageRoot": "0x31efd213b32866131a81d1e0b6229a634c6fc8d3179591a8ee490f34703974ad"
+      },
+      {
+        "dataDescription": "voice.json",
+        "dataHash": "0x6d06ba956e2c2a2d26d4a24761136bbc241ffd01d7a3de8d7b4a1744a425d68f",
+        "storageRoot": "0x6d06ba956e2c2a2d26d4a24761136bbc241ffd01d7a3de8d7b4a1744a425d68f"
+      }
+    ],
+    "storageRoot": "0xc2f9e0c9916a6c635e7a3b015d8062b656007608bd875633db83febbc5e1cd74"
+  },
+  "inft": {
+    "tokenId": "9",
+    "txHash": "0x4b17c8f8068a081363d00b56d365a23b85842c2be3323891c7c47ab3f76dc73d"
+  },
+  "ensSubname": {
+    "txHash": "0x7c026d2c4340288493522849ae5ad77e340276832dd78ba86c2a80d3005552af"
+  },
+  "ensRecords": {
+    "txHash": "0x1c7478641dc08169bebc41858218bdf6373f7709b98bd0679f22d16f189f98bb",
+    "recordCount": 11
+  },
+  "ensTransfer": {
+    "txHash": "0xbf7e69c56e8dff17b85fb157ad17ecf77c9c8f4eae5457c4170bb69203f9e158",
+    "alreadyOwned": false
+  },
+  "completed": true
+}

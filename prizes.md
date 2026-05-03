@@ -46,47 +46,6 @@ Agent-building only. Autonomous single agents, multi-agent swarms, or iNFT (ERC-
 
 ---
 
-## Uniswap Foundation — $5,000 Total
-
-> **About:** Largest DEX protocol for swapping value onchain. Full stack platform including v2/v3/v4, APIs, and Unichain.
-
-### 🦄 Best Uniswap API Integration — $5,000
-| Place | Prize |
-|-------|-------|
-| 🥇 1st | $2,500 |
-| 🥈 2nd | $1,500 |
-| 🥉 3rd | $1,000 |
-
-Integrate the Uniswap API to give your agent the ability to swap and settle value onchain.
-
-**Requirements:**
-- Must include a `FEEDBACK.md` file in the repo root (required for prize eligibility) covering: builder experience with the Uniswap API, what worked, bugs hit, docs gaps, DX friction, missing endpoints, and wishlist.
-
----
-
-## Gensyn — $5,000 Total
-
-> **About:** AXL (Agent eXchange Layer) — a peer-to-peer network node providing encrypted, decentralised communication. No servers, no cloud, no accounts. Built-in MCP and A2A support. Any language that can make HTTP requests can use it.
-
-### 🎖️ Best Application of AXL — $5,000
-| Place | Prize |
-|-------|-------|
-| 🥇 1st | $2,500 |
-| 🥈 2nd | $1,500 |
-| 🥉 3rd | $1,000 |
-
-One ranked prize pool. Best work wins regardless of what you build. Must use AXL in a meaningful way.
-
-**Judging Criteria:** Depth of AXL integration, code quality, clear documentation, working examples.
-
-**Requirements:**
-- Must use AXL for inter-agent or inter-node communication (no centralised message broker)
-- Must demonstrate communication across separate AXL nodes (not just in-process)
-- Project must be built during the hackathon
-
-*All winners fast-tracked into the Gensyn Foundation grant programme.*
-
----
 
 ## ENS — $5,000 Total
 
@@ -161,14 +120,3 @@ Separate bounty for honest, actionable feedback while integrating KeeperHub. Ope
 Must cover at least one of: UX/UI friction, reproducible bugs, documentation gaps, or feature requests. Must be specific and actionable.
 
 ---
-
-## Prize Summary
-
-| Sponsor | Prize Track | Total |
-|---------|-------------|-------|
-| 0G | Best Agent Framework + Best Autonomous Agents/Swarms | $15,000 |
-| Uniswap Foundation | Best Uniswap API Integration | $5,000 |
-| Gensyn | Best Application of AXL | $5,000 |
-| ENS | Best ENS Integration for AI Agents + Most Creative Use | $5,000 |
-| KeeperHub | Best Use of KeeperHub + Feedback Bounty | $5,000 |
-| **Total** | | **$35,000** |

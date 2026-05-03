@@ -208,11 +208,20 @@ async function joinVc(state: DeployState): Promise<void> {
     const ws = nstate.ws;
     if (ws && !hookedWs.has(ws)) {
       hookedWs.add(ws);
-      ws.on?.('close', (code: number, reason: Buffer) =>
+      ws.on?.('close', (...args: any[]) => {
+        const a = args[0];
+        let code: any = args[0];
+        let reason: any = args[1];
+        if (a && typeof a === 'object') {
+          code = a.code ?? a.statusCode ?? a;
+          reason = a.reason ?? a.message ?? '';
+        }
         console.warn(
-          `[discord-bot] voice WS closed ${state.guildId}: code=${code} reason=${reason?.toString?.() ?? ''}`
-        )
-      );
+          `[discord-bot] voice WS closed ${state.guildId}: code=${code} reason=${
+            reason?.toString?.() ?? reason ?? ''
+          } raw=${JSON.stringify(a, Object.getOwnPropertyNames(a ?? {}))}`
+        );
+      });
       ws.on?.('error', (e: Error) =>
         console.warn(`[discord-bot] voice WS error ${state.guildId}:`, e.message)
       );

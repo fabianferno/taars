@@ -74,43 +74,51 @@ export function VoiceRecorder({
   }
 
   return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur">
+    <div
+      className={`rounded-2xl border border-surface-dark/60 bg-surface p-5 transition-shadow sm:p-6 ${
+        recording ? 'shadow-md shadow-accent/10 ring-2 ring-accent/15' : 'shadow-sm'
+      }`}
+    >
       {mode === 'record' ? (
         <>
-          <p className="mb-3 text-sm text-white">
-            Record up to {maxSeconds}s of natural speech. Voice character matters more than what you say.
+          <p className="mb-3 text-sm text-muted-foreground">
+            Record up to {maxSeconds}s of natural speech. Voice character matters more than what you
+            say.
           </p>
           {recording && samplePrompt && (
-            <div className="mb-4 rounded-xl border border-white/15 bg-white/5 px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-white/60">
+            <div className="mb-4 rounded-xl border border-accent/20 bg-card-bg px-4 py-3 shadow-sm">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-accent">
                 Read this aloud
               </p>
-              <p className="mt-2 text-sm leading-relaxed text-white/95">{samplePrompt}</p>
+              <p className="mt-2 text-sm leading-relaxed text-foreground">{samplePrompt}</p>
             </div>
           )}
           {recording ? (
             <button
               onClick={stop}
-              className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-600"
+              className="rounded-full bg-destructive px-5 py-2 text-sm font-medium text-white transition hover:opacity-90"
             >
               Stop ({secondsLeft}s)
             </button>
           ) : (
             <button
               onClick={start}
-              className="rounded-full bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white"
+              className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition hover:bg-accent-light"
             >
               {recordedUrl ? 'Re-record' : 'Start recording'}
             </button>
           )}
-          {recordedUrl && <audio src={recordedUrl} controls className="mt-3 w-full" />}
+          {recordedUrl && (
+            <audio src={recordedUrl} controls className="mt-4 h-10 w-full rounded-lg accent-accent" />
+          )}
         </>
       ) : (
         <>
-          <p className="mb-3 text-sm text-neutral-400">
-            Upload an audio file. Accepted: any format supported by OpenVoice (wav, mp3, m4a, flac, ogg…).
+          <p className="mb-3 text-sm text-muted-foreground">
+            Upload an audio file. Accepted: any format supported by OpenVoice (wav, mp3, m4a, flac,
+            ogg…).
           </p>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-medium text-neutral-950 transition hover:bg-neutral-100">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition hover:bg-accent-light">
             {uploadedUrl ? 'Replace file' : 'Choose file'}
             <input
               type="file"
@@ -119,14 +127,17 @@ export function VoiceRecorder({
               onChange={handleFileChange}
             />
           </label>
-          {uploadedUrl && <audio src={uploadedUrl} controls className="mt-3 w-full" />}
+          {uploadedUrl && (
+            <audio src={uploadedUrl} controls className="mt-4 h-10 w-full rounded-lg accent-accent" />
+          )}
         </>
       )}
 
       {onModeChange && (
         <button
+          type="button"
           onClick={() => onModeChange(mode === 'record' ? 'upload' : 'record')}
-          className="mt-4 block text-xs text-white underline-offset-2 hover:underline"
+          className="mt-4 block text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
           {mode === 'record' ? 'or upload a file instead' : 'or record instead'}
         </button>

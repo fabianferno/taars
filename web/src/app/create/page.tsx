@@ -46,10 +46,14 @@ const blankStates = (): Record<MintStepKey, StepState> => ({
 
 /** Passage for voice enrollment: natural prose plus varied sounds for a clearer clone. */
 const VOICE_SAMPLE_PROMPT =
-  'Hello — this is my taar voice sample. I’m speaking clearly and at my normal pace. ' +
-  'The evening breeze rustled through tall oak trees near the riverbank. ' +
-  'Pack my box with five dozen quality liquor jugs. ' +
-  'Thanks for listening; that should be enough for my replica.';
+  'Hello — this is my taar voice sample. I’m speaking clearly, in a relaxed tone, at my usual pace. ' +
+  'Imagine a quiet Saturday morning: coffee steam, soft light through the blinds, and nowhere urgent to be. ' +
+  'The evening breeze rustled through tall oak trees along the riverbank while two herons watched from the shallows. ' +
+  'I’ve always wondered whether subtle warmth in a voice matters more than perfect pronunciation — probably both help. ' +
+  'Numbers for variety: twenty-four degrees, half past three, roughly ninety-nine problems but this clone isn’t one. ' +
+  'Pack my box with five dozen quality liquor jugs. The quick brown fox jumps over the lazy dog. ' +
+  'She sells seashells by the seashore, and the waves roll in steady rhythm. ' +
+  'Thanks for listening — that’s enough for my replica to learn how I actually sound.';
 
 export default function CreatePage() {
   const router = useRouter();

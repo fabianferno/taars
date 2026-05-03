@@ -34,6 +34,9 @@ function formatPrice(t: UiAgent): string {
 function TaarCard({ taar }: { taar: UiAgent }) {
   const isSelf = taar.verification === "self";
   const ensLabel = taar.ens.replace(".taars.eth", "");
+  const avatarSrc =
+    taar.image ??
+    `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${encodeURIComponent(taar.ens)}&radius=50&backgroundType=gradientLinear`;
 
   return (
     <Link
@@ -44,19 +47,14 @@ function TaarCard({ taar }: { taar: UiAgent }) {
         <div
           className={`shrink-0 h-14 w-14 rounded-full bg-gradient-to-br ${taar.gradient} flex items-center justify-center overflow-hidden border border-white/10`}
         >
-          {taar.image ? (
-            <Image
-              src={taar.image}
-              alt={taar.name}
-              width={56}
-              height={56}
-              className="w-full h-full object-cover object-top"
-            />
-          ) : (
-            <span className="font-coolvetica text-lg text-white/90">
-              {taar.initials}
-            </span>
-          )}
+          <Image
+            src={avatarSrc}
+            alt={taar.name}
+            width={56}
+            height={56}
+            className="w-full h-full object-cover object-top"
+            unoptimized={!taar.image}
+          />
         </div>
 
         <div className="min-w-0 flex-1">

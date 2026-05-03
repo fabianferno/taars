@@ -1,12 +1,12 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import {
   ChevronDown,
   ExternalLink,
   Hash,
   Loader2,
-  MessageSquare,
   PowerOff,
   Send,
 } from 'lucide-react';
@@ -198,7 +198,7 @@ export function DiscordDeployPanel({
       >
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600/15">
-            <MessageSquare className="h-5 w-5 text-indigo-600" />
+            <DiscordLogo className="h-5 w-5 text-indigo-600" />
           </div>
           <div>
             <h2 className="font-coolvetica text-lg text-foreground">
@@ -318,7 +318,7 @@ export function DiscordDeployPanel({
                   </>
                 ) : (
                   <>
-                    <MessageSquare className="h-4 w-4" /> Deploy {ensFullName} to VC
+                    <DiscordLogo className="h-4 w-4" /> Deploy {ensFullName} to VC
                   </>
                 )}
               </button>
@@ -478,6 +478,18 @@ function Field({
       {children}
       {hint && <p className="mt-1 text-[10px] text-muted-foreground/70">{hint}</p>}
     </div>
+  );
+}
+
+function DiscordLogo({ className }: { className?: string }) {
+  return (
+    <Image
+      src="/discord-icon.jpg"
+      alt="Discord"
+      width={24}
+      height={24}
+      className={`${className ?? ''} rounded-md object-cover`}
+    />
   );
 }
 

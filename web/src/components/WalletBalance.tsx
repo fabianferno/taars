@@ -1,10 +1,13 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { useBalance, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { createPublicClient, http } from 'viem';
 import { Loader2, Droplets, ExternalLink } from 'lucide-react';
 import { MOCK_USDC_ADDRESS, MOCK_USDC_ABI, USDC_DECIMALS, atomicToUsd } from '@/lib/billing';
+
+const OG_RPC_URL = process.env.NEXT_PUBLIC_OG_RPC_URL ?? 'https://evmrpc-testnet.0g.ai';
 
 const SEPOLIA_FAUCETS = [
   { label: 'Alchemy', href: 'https://sepoliafaucet.com' },
@@ -36,6 +39,16 @@ export function WalletBalance({ address }: Props) {
 
   const { data: ethBalance } = useBalance({ address });
 
+  const ogClient = useMemo(
+    () => createPublicClient({ transport: http(OG_RPC_URL) }),
+    [],
+  );
+  const { data: ogBalanceWei } = useQuery({
+    queryKey: ['og-balance', address],
+    queryFn: () => ogClient.getBalance({ address }),
+    refetchInterval: 15_000,
+  });
+
   const usdcEnabled = !!MOCK_USDC_ADDRESS;
   const { data: usdcRaw, queryKey: usdcQueryKey } = useReadContract({
     address: MOCK_USDC_ADDRESS || undefined,
@@ -57,6 +70,7 @@ export function WalletBalance({ address }: Props) {
   }, [mintConfirmed, queryClient, usdcQueryKey]);
 
   const ethValue = ethBalance ? Number(ethBalance.value) / 1e18 : null;
+  const ogValue = ogBalanceWei !== undefined ? Number(ogBalanceWei) / 1e18 : null;
   const usdcValue = usdcRaw !== undefined ? atomicToUsd(usdcRaw as bigint) : null;
 
   const ethIsZero = ethValue !== null && ethValue === 0;
@@ -76,7 +90,10 @@ export function WalletBalance({ address }: Props) {
   return (
     <div className="hidden sm:flex items-center gap-2">
       {ethValue !== null && (
-        <div className="relative flex items-center gap-1" ref={ethIsZero ? dropdownRef : undefined}>
+        <div className="relative flex items-center gap-1.5" ref={ethIsZero ? dropdownRef : undefined}>
+          <span className="rounded-full bg-surface-dark/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Sep
+          </span>
           <span className="font-mono text-xs text-muted-foreground">
             {ethValue.toFixed(4)} ETH
           </span>
@@ -110,8 +127,22 @@ export function WalletBalance({ address }: Props) {
         </div>
       )}
 
+      {ogValue !== null && (
+        <div className="flex items-center gap-1.5">
+          <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent">
+            0G
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {ogValue.toFixed(4)} OG
+          </span>
+        </div>
+      )}
+
       {usdcEnabled && usdcValue !== null && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          <span className="rounded-full bg-surface-dark/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Sep
+          </span>
           <span className="font-mono text-xs text-muted-foreground">
             {Number(usdcValue).toFixed(2)} USDC
           </span>

@@ -4,6 +4,7 @@ import { createPublicClient, createWalletClient, http, type Address, type Hash }
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import { env } from '../env.js';
+import { fireKeeperhubWorkflow, KH_WORKFLOWS } from './keeperhub.js';
 
 const billingAbi = [
   {
@@ -105,7 +106,9 @@ export async function settleSessionOnChain(
   sessionId: `0x${string}`,
   endedAt: number,
   ratePerMinUsd = '0',
-  durationSeconds = 0
+  durationSeconds = 0,
+  tokenId = '0',
+  ensFullName = ''
 ): Promise<SettleResult | SettleSkipped> {
   if (!env.TAARS_BILLING_ADDRESS) {
     const out: SettleSkipped = {
@@ -121,7 +124,23 @@ export async function settleSessionOnChain(
     try {
       await appendAudit({ event: 'settle.attempt', attempt, sessionId, endedAt });
       const r = await settleOnce(sessionId, endedAt, ratePerMinUsd, durationSeconds);
-      await appendAudit({ event: 'settle.success', attempt, sessionId, ...r });
+      // Trigger KeeperHub billing-settle verifier workflow (real org workflow).
+      // It reads getRevenue on Sepolia to attest that revenue actually accrued.
+      const kh = await fireKeeperhubWorkflow('billingSettle', {
+        sessionId,
+        tokenId,
+        txHash: r.txHash,
+        expectedUsd: r.expectedUsd,
+        durationSeconds,
+        ensFullName,
+      });
+      await appendAudit({
+        event: 'settle.success',
+        attempt,
+        sessionId,
+        ...r,
+        keeperhub: kh,
+      });
       return r;
     } catch (e) {
       lastErr = e as Error;

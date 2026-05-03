@@ -17,6 +17,8 @@ export interface ChatMessage {
   text: string;
   audioBase64?: string;
   audioMime?: string;
+  /** Inference provider for assistant messages */
+  provider?: string;
   createdAt: number;
 }
 
@@ -27,7 +29,6 @@ export interface ActiveSession {
   voiceId: string;
   ensFullName: string;
   billingTerms: ChatStartResponse['billingTerms'];
-  mockLLM?: boolean;
 }
 
 let _idSeed = 0;
@@ -77,7 +78,6 @@ export function useChatSession(ensLabel: string): UseChatSessionResult {
           voiceId: res.voiceId,
           ensFullName: res.ensFullName,
           billingTerms: res.billingTerms,
-          mockLLM: res.mockLLM,
         };
         sessionRef.current = next;
         setSession(next);
@@ -125,6 +125,7 @@ export function useChatSession(ensLabel: string): UseChatSessionResult {
           text: res.text,
           audioBase64: res.audioBase64,
           audioMime: res.audioMime,
+          provider: res.provider,
           createdAt: Date.now(),
         };
         setMessages((m) => [...m, aMsg]);

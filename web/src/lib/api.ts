@@ -129,7 +129,6 @@ export interface ChatStartResponse {
   voiceId: string;
   ensFullName: string;
   billingTerms: BillingTerms;
-  mockLLM?: boolean;
 }
 
 export interface ChatMessageRequest {
@@ -142,7 +141,6 @@ export interface ChatMessageResponse {
   audioBase64?: string;
   audioMime?: string;
   sessionId: string;
-  mockLLM?: boolean;
   /** Inference provider that produced this reply: 'zerog' | 'openai' | 'mock' */
   provider?: string;
 }

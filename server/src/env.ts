@@ -26,7 +26,6 @@ const schema = z.object({
   OG_BROKER_PROVIDER: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   TAARS_BILLING_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   MOCK_USDC_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
-  MOCK_INFT_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 });
 
 export const env = schema.parse(process.env);

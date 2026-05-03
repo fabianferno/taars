@@ -1,6 +1,11 @@
-import type { MintRequest, MintResponse, MintErrorResponse } from '@taars/sdk';
+import type {
+  MintRequest,
+  MintResponse,
+  MintErrorResponse,
+  PersonalityAnswers,
+} from '@taars/sdk';
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:8080';
+export const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:8080';
 
 export async function mintReplica(req: MintRequest): Promise<MintResponse> {
   const res = await fetch(`${SERVER_URL}/mint`, {
@@ -41,7 +46,8 @@ export type MintStepKey =
   | 'storage'
   | 'inft'
   | 'ens.subname'
-  | 'ens.records';
+  | 'ens.records'
+  | 'ens.transfer';
 
 export type MintStreamEvent =
   | {
@@ -57,9 +63,11 @@ export type MintStreamEvent =
 export async function mintReplicaStream(
   req: MintRequest,
   onEvent: (e: MintStreamEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts?: { fresh?: boolean }
 ): Promise<MintResponse> {
-  const res = await fetch(`${SERVER_URL}/mint/stream`, {
+  const url = `${SERVER_URL}/mint/stream${opts?.fresh ? '?fresh=1' : ''}`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -135,6 +143,8 @@ export interface ChatMessageResponse {
   audioMime?: string;
   sessionId: string;
   mockLLM?: boolean;
+  /** Inference provider that produced this reply: 'zerog' | 'openai' | 'mock' */
+  provider?: string;
 }
 
 export interface ChatEndResponse {
@@ -210,4 +220,127 @@ export async function endChat(sessionId: string): Promise<ChatEndResponse> {
 export async function getSession(sessionId: string): Promise<ChatSessionInfo> {
   const res = await fetch(`${SERVER_URL}/chat/session/${encodeURIComponent(sessionId)}`);
   return jsonOrThrow<ChatSessionInfo>(res, 'chat/session');
+}
+
+// ---------------------------------------------------------------------------
+// Discord deploy lifecycle
+// ---------------------------------------------------------------------------
+
+export interface DiscordDeployStartRequest {
+  ensLabel: string;
+  guildId: string;
+  channelId: string;
+  ownerAddress: `0x${string}`;
+}
+
+export interface DiscordDeployStartResponse {
+  ok: boolean;
+  deployId: string;
+  txAuditId: string;
+  status: 'pending' | 'active' | 'ended' | 'failed';
+  ensLabel: string;
+  ensFullName: string;
+  voiceId: string;
+  ratePerMinUsd: string;
+  startedAt: number;
+  sessionId: string;
+}
+
+export interface DiscordDeploySpeakResponse {
+  ok: boolean;
+  durationMs: number;
+  voiceUsed?: string;
+}
+
+export interface DiscordDeployEndResponse {
+  ok: boolean;
+  deployId: string;
+  deployedSeconds: number;
+  ratePerMinUsd: string;
+  expectedUsd: string;
+  settlement: {
+    settled: boolean;
+    txHash?: string;
+    expectedUsd?: string;
+    reason?: string;
+  };
+}
+
+export async function startDiscordDeploy(
+  req: DiscordDeployStartRequest
+): Promise<DiscordDeployStartResponse> {
+  const res = await fetch(`${SERVER_URL}/deploy/discord`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  return jsonOrThrow<DiscordDeployStartResponse>(res, 'deploy/discord');
+}
+
+export async function speakDiscordDeploy(
+  deployId: string,
+  message: string
+): Promise<DiscordDeploySpeakResponse> {
+  const res = await fetch(`${SERVER_URL}/deploy/discord/speak`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deployId, message }),
+  });
+  return jsonOrThrow<DiscordDeploySpeakResponse>(res, 'deploy/discord/speak');
+}
+
+export async function clearMintCheckpoint(
+  owner: `0x${string}`,
+  ensLabel: string
+): Promise<void> {
+  const url = new URL(`${SERVER_URL}/mint/checkpoint`);
+  url.searchParams.set('owner', owner);
+  url.searchParams.set('ensLabel', ensLabel);
+  await fetch(url.toString(), { method: 'DELETE' });
+}
+
+// ---------------------------------------------------------------------------
+// Personality import (auto-fill from URL or pasted text)
+// ---------------------------------------------------------------------------
+
+export interface PersonalityImportRequest {
+  source: 'url' | 'text';
+  value: string;
+}
+
+export interface PersonalityImportResponse {
+  ok: true;
+  personality: PersonalityAnswers;
+  provider?: string;
+}
+
+export async function importPersonality(
+  req: PersonalityImportRequest
+): Promise<PersonalityImportResponse> {
+  const res = await fetch(`${SERVER_URL}/personality/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    let err: { error?: string } = {};
+    try {
+      err = await res.json();
+    } catch {
+      // not JSON
+    }
+    throw new Error(err.error ?? `personality/import failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function endDiscordDeploy(
+  deployId: string
+): Promise<DiscordDeployEndResponse> {
+  const res = await fetch(`${SERVER_URL}/deploy/discord/end`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deployId }),
+  });
+  return jsonOrThrow<DiscordDeployEndResponse>(res, 'deploy/discord/end');
 }

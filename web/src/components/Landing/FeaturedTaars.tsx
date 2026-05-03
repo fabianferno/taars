@@ -1,7 +1,6 @@
 "use client";
 
-import { FEATURED_TAARS } from "@/lib/taars-data";
-import type { TaarData } from "@/lib/taars-data";
+import { useAgents, type UiAgent } from "@/hooks/useAgents";
 import { motion, useInView } from "framer-motion";
 import { BadgeCheck, MessageCircle, Users } from "lucide-react";
 import Image from "next/image";
@@ -25,7 +24,7 @@ function TaarCard({
   taar,
   index,
 }: {
-  taar: TaarData;
+  taar: UiAgent;
   index: number;
 }) {
   const gradient = landingGradients[taar.ens] || "from-orange-600 to-orange-900";
@@ -121,6 +120,7 @@ function TaarCard({
 export default function FeaturedTaars() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const { agents, loading, error } = useAgents({ featuredOnly: true });
 
   return (
     <section id="featured" className="py-24 sm:py-32" ref={ref}>
@@ -140,10 +140,13 @@ export default function FeaturedTaars() {
         </motion.div>
       </div>
 
+      {loading && <div className="text-center text-white/60 py-8">Loading featured agents…</div>}
+      {error && <div className="text-center text-red-400 py-8">Failed to load: {error}</div>}
+
       {/* Horizontal scroll container */}
       <div className="overflow-x-auto overflow-y-visible pb-4 scrollbar-hide">
         <div className="flex gap-4 px-6 max-w-7xl mx-auto py-2">
-          {FEATURED_TAARS.map((taar, i) => (
+          {agents.map((taar, i) => (
             <TaarCard key={taar.ens} taar={taar} index={i} />
           ))}
         </div>

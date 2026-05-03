@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { resolveTaarsLabel, type ReplicaProfile } from '@/lib/ens';
-import { ALL_TAARS } from '@/lib/taars-data';
+import { useAgents } from '@/hooks/useAgents';
 import {
   TAARS_BILLING_ABI,
   TAARS_BILLING_ADDRESS,
@@ -25,6 +25,7 @@ export default function EarningsPage() {
   const [replicas, setReplicas] = useState<OwnedReplica[]>([]);
   const [loading, setLoading] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const { agents } = useAgents();
 
   const billingDeployed = Boolean(TAARS_BILLING_ADDRESS);
 
@@ -36,12 +37,16 @@ export default function EarningsPage() {
       setReplicas([]);
       return;
     }
+    if (agents.length === 0) {
+      // Wait for agent list to load before resolving
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
       setResolveError(null);
       try {
-        const candidates = ALL_TAARS.map((t) => t.ens.replace('.taars.eth', ''));
+        const candidates = agents.map((t) => t.ens.replace('.taars.eth', ''));
         const profiles = await Promise.all(
           candidates.map(async (label) => {
             try {
@@ -89,7 +94,7 @@ export default function EarningsPage() {
     return () => {
       cancelled = true;
     };
-  }, [authenticated, wallet]);
+  }, [authenticated, wallet, agents]);
 
   if (!authenticated) {
     return (

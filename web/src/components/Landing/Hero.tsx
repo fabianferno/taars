@@ -3,30 +3,19 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Compass } from "lucide-react";
 import Link from "next/link";
-import DotField from "@/components/DotField";
 
 export default function Hero() {
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden">
-      <div className="absolute inset-0 z-0 min-h-full pointer-events-none">
-        <DotField
-          bulgeOnly={false}
-          dotRadius={5}
-          dotSpacing={20}
-          cursorRadius={420}
-          waveAmplitude={2.25}
-
-          bulgeStrength={67}
-          glowRadius={5}
-          sparkle={true}
-
-          cursorForce={0.1}
-
-          gradientFrom="rgba(234, 88, 12, 0.42)"
-          gradientTo="rgba(234, 88, 12, 0.42)"
-          glowColor="#ffffff"
-        />
-      </div>
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        className="absolute filter invert hue-rotate-110 inset-0 z-0 w-full h-full object-cover pointer-events-none"
+      >
+        <source src="/bg-video.mp4" type="video/mp4" />
+      </video>
 
       {/* Subtle radial gradient vignette */}
       <div className="absolute inset-0 pointer-events-none z-[1]">

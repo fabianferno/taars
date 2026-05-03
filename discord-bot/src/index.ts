@@ -12,12 +12,15 @@ import { env } from './env.js';
 interface DeployState {
   guildId: string;
   channelId: string;
+  textChannelId: string;
   voiceId: string;
   ensLabel: string;
+  sessionId: string;
   startedAt: number;
-  // Lazy types: connection, audioPlayer come from @discordjs/voice when present.
   connection: any;
   audioPlayer?: any;
+  receiver: any | null;
+  speaking: boolean;
 }
 
 const deploys = new Map<string, DeployState>(); // keyed by guildId
@@ -33,7 +36,12 @@ async function initDiscord(): Promise<void> {
   voiceMod = await import('@discordjs/voice');
   const { Client, GatewayIntentBits } = djs;
   discordClient = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
   });
   await new Promise<void>((resolve, reject) => {
     discordClient.once('ready', () => {
@@ -300,9 +308,10 @@ async function leaveVc(state: DeployState): Promise<number> {
 const deployBodySchema = z.object({
   guildId: z.string().min(1),
   channelId: z.string().min(1),
+  textChannelId: z.string().min(1),
   voiceId: z.string().min(1),
   ensLabel: z.string().min(1),
-  sessionId: z.string().optional(),
+  sessionId: z.string().min(1),
 });
 
 const speakBodySchema = z.object({
@@ -351,10 +360,14 @@ async function handleDeploy(body: unknown) {
   const state: DeployState = {
     guildId: parsed.guildId,
     channelId: parsed.channelId,
+    textChannelId: parsed.textChannelId,
     voiceId: parsed.voiceId,
     ensLabel: parsed.ensLabel,
+    sessionId: parsed.sessionId,
     startedAt: Date.now(),
     connection: null,
+    receiver: null,
+    speaking: false,
   };
   await joinVc(state);
   deploys.set(parsed.guildId, state);

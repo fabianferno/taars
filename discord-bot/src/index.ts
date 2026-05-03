@@ -211,6 +211,54 @@ async function playInGuild(guildId: string, text: string): Promise<{ durationMs:
   return { durationMs: Date.now() - start, voiceUsed };
 }
 
+const STOPWORDS = /^(uh+|um+|hmm+|ah+|er+|\.+)$/i;
+const MIN_PCM_BYTES = 48_000 * 2 * 2 * 0.3; // 300ms of 48k stereo s16le
+
+async function attachVoiceListener(state: DeployState): Promise<void> {
+  // Lazy import: prism-media is loaded only after voice deps initialize.
+  const prism: any = await import('prism-media');
+  const receiver = state.connection.receiver;
+  state.receiver = receiver;
+
+  receiver.speaking.on('start', (userId: string) => {
+    if (state.speaking) return; // bot is already replying; ignore new turns
+    const opusStream = receiver.subscribe(userId, {
+      end: { behavior: voiceMod.EndBehaviorType.AfterSilence, duration: 1000 },
+    });
+    const decoder = new prism.opus.Decoder({
+      frameSize: 960,
+      channels: 2,
+      rate: 48000,
+    });
+    const chunks: Buffer[] = [];
+    const pcmStream = opusStream.pipe(decoder);
+    pcmStream.on('data', (c: Buffer) => chunks.push(c));
+    pcmStream.on('error', (e: Error) =>
+      console.warn(`[discord-bot] pcm stream error ${state.guildId}:`, e.message)
+    );
+    pcmStream.on('end', async () => {
+      const pcm = Buffer.concat(chunks);
+      if (pcm.length < MIN_PCM_BYTES) return; // too short, likely noise
+      if (state.speaking) return; // raced with another turn
+      state.speaking = true;
+      try {
+        const text = await transcribePcm(state, pcm);
+        if (!text || STOPWORDS.test(text)) return;
+        console.log(`[discord-bot] heard ${state.guildId} <${userId}>: ${text}`);
+        const reply = await agentReply(state, text);
+        if (!reply) return;
+        console.log(`[discord-bot] replying ${state.guildId}: ${reply.slice(0, 120)}`);
+        await playInGuild(state.guildId, reply);
+      } catch (e) {
+        console.warn(`[discord-bot] turn failed ${state.guildId}:`, (e as Error).message);
+      } finally {
+        state.speaking = false;
+      }
+    });
+  });
+  console.log(`[discord-bot] voice listener attached for guild ${state.guildId}`);
+}
+
 async function joinVc(state: DeployState): Promise<void> {
   requireReady();
   const guild = await discordClient.guilds.fetch(state.guildId).catch((e: Error) => {
@@ -348,6 +396,7 @@ async function joinVc(state: DeployState): Promise<void> {
     err.status = 502;
     throw err;
   }
+  await attachVoiceListener(state);
 }
 
 async function leaveVc(state: DeployState): Promise<number> {

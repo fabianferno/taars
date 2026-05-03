@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Power, Info } from 'lucide-react';
+import { Send, Power } from 'lucide-react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import type { ReplicaProfile } from '@/lib/ens';
 import { useChatSession } from '@/hooks/useChatSession';
+import { useLlmStatus } from '@/hooks/useLlmStatus';
 import { useApprovedSpend } from '@/hooks/useApprovedSpend';
 import { usdToAtomic, atomicToUsd } from '@/lib/billing';
 import { MessageList } from './MessageList';
@@ -21,6 +22,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
   const ensLabel = profile.ensLabel;
 
   const chat = useChatSession(ensLabel);
+  const llmStatus = useLlmStatus();
   const [input, setInput] = useState('');
   const [voiceMode, setVoiceMode] = useState(true);
   const [backendOffline, setBackendOffline] = useState(false);
@@ -98,7 +100,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
   if (!authenticated) {
     return (
       <Section title="Start a session">
-        <p className="mb-3 text-sm text-neutral-400">
+        <p className="mb-3 text-sm text-muted-foreground">
           Sign in with email, Google, or wallet to begin chatting with {profile.ensFullName}.
         </p>
         <button
@@ -115,15 +117,15 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
     const billingActive = Boolean(billingContract && usdcAddress);
     return (
       <Section title="Start a session">
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-muted-foreground">
           Per-minute rate{' '}
-          <span className="font-mono text-neutral-100">${ratePerMinUsd}</span> · approval
+          <span className="font-mono text-foreground">${ratePerMinUsd}</span> · approval
           covers up to {APPROVAL_MINUTES} minutes.
         </p>
         {billingActive && (
-          <p className="mt-2 text-xs text-neutral-500">
+          <p className="mt-2 text-xs text-muted-foreground">
             current allowance{' '}
-            <span className="font-mono text-neutral-300">${atomicToUsd(allowance)}</span>
+            <span className="font-mono text-foreground">${atomicToUsd(allowance)}</span>
           </p>
         )}
 
@@ -149,7 +151,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
         </div>
 
         {(chat.error || backendOffline) && (
-          <p className="mt-3 text-sm text-red-400">
+          <p className="mt-3 text-sm text-destructive">
             {backendOffline
               ? 'chat backend offline; verify the server is running on :8080'
               : chat.error}
@@ -169,7 +171,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
             ratePerMinUsd={chat.session.ratePerMinUsd}
           />
           <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-1.5 text-xs text-neutral-400">
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={voiceMode}
@@ -181,7 +183,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
             <button
               onClick={handleEnd}
               disabled={chat.ending}
-              className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/15 disabled:opacity-50"
             >
               <Power size={12} />
               {chat.ending ? 'Ending…' : 'End session'}
@@ -189,10 +191,15 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
           </div>
         </div>
 
-        {chat.session.mockLLM && (
-          <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200">
-            <Info size={14} className="mt-0.5 shrink-0" />
-            <span>running in mock mode (no LLM key configured)</span>
+        {llmStatus && !llmStatus.zerog.configured && !llmStatus.openai.configured && (
+          <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            No LLM provider configured. Chat is disabled. Set <code>OG_BROKER_PROVIDER</code> (0G Compute) or <code>OPENAI_API_KEY</code> on the server.
+          </div>
+        )}
+        {llmStatus?.lastError && llmStatus.zerog.configured && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            0G inference unavailable{llmStatus.openai.configured ? ' — using OpenAI fallback.' : '.'}
+            <div className="text-xs opacity-70 mt-1">Reason: {llmStatus.lastError}</div>
           </div>
         )}
 
@@ -209,7 +216,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
               }
             }}
             placeholder="Type a message…"
-            className="flex-1 rounded-xl border border-neutral-800 bg-neutral-950/70 px-4 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent/60 focus:outline-none"
+            className="flex-1 rounded-xl border border-surface-dark/70 bg-white px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none"
           />
           <button
             onClick={handleSend}
@@ -221,7 +228,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
           </button>
         </div>
 
-        {chat.error && <p className="text-xs text-red-400">{chat.error}</p>}
+        {chat.error && <p className="text-xs text-destructive">{chat.error}</p>}
       </div>
 
       {chat.receipt && (
@@ -233,7 +240,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5">
+    <section className="rounded-2xl border border-surface-dark/60 bg-white p-5 shadow-sm">
       <h2 className="mb-3 font-coolvetica text-xl text-foreground">{title}</h2>
       {children}
     </section>

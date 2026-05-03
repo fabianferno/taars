@@ -344,3 +344,17 @@ export async function endDiscordDeploy(
   });
   return jsonOrThrow<DiscordDeployEndResponse>(res, 'deploy/discord/end');
 }
+
+export interface LlmStatus {
+  zerog: { configured: boolean };
+  openai: { configured: boolean };
+  lastUsed: string | null;
+  lastError: string | null;
+}
+
+export async function getLlmStatus(): Promise<LlmStatus> {
+  const r = await fetch(`${SERVER_URL}/chat/llm-status`);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'failed');
+  return j.status as LlmStatus;
+}

@@ -157,65 +157,88 @@ class OpenAIProvider implements LLMProvider {
   }
 }
 
-// ----- Mock provider -----
-
-class MockProvider implements LLMProvider {
-  name = 'mock';
-
-  async complete(messages: ChatMessage[]): Promise<string> {
-    // Pull persona hints from the system prompt so the response feels personality-flavored.
-    const sys = messages.find((m) => m.role === 'system')?.content ?? '';
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-    const vibe = pickAfterHeading(sys, 'vibe') || 'thoughtful and warm';
-    const expertise = pickAfterHeading(sys, 'expertise') || 'general topics';
-    const opener = openerForVibe(vibe);
-    const userPreview = lastUser.length > 140 ? `${lastUser.slice(0, 140)}...` : lastUser;
-    return `${opener} On "${userPreview.trim() || 'your question'}", here is my take based on my expertise in ${expertise}: thanks for asking, this is a mock response from the taars demo replica.`;
-  }
-}
-
-function pickAfterHeading(md: string, heading: string): string | null {
-  const re = new RegExp(`##\\s+${heading}\\s*\\n([^\\n]+)`, 'i');
-  const m = md.match(re);
-  return m ? m[1].trim() : null;
-}
-
-function openerForVibe(vibe: string): string {
-  const v = vibe.toLowerCase();
-  if (v.includes('chill') || v.includes('relax')) return 'Hey, take it easy.';
-  if (v.includes('hype') || v.includes('energ')) return 'Let us go!';
-  if (v.includes('analytical') || v.includes('precise')) return 'Quick analysis.';
-  if (v.includes('warm') || v.includes('kind')) return 'Glad you reached out.';
-  if (v.includes('snark') || v.includes('sarcas')) return 'Oh, sure.';
-  return 'Right then.';
-}
-
 // ----- selector -----
 
-let _provider: LLMProvider | null = null;
+export class LLMUnavailableError extends Error {
+  constructor(public readonly reason: string) {
+    super(`No LLM provider available: ${reason}`);
+    this.name = 'LLMUnavailableError';
+  }
+}
 
-export function getLLM(): LLMProvider {
-  if (_provider) return _provider;
-  if (env.OG_BROKER_PROVIDER && env.DEPLOYER_PRIVATE_KEY) {
-    try {
-      _provider = new ZeroGLLMProvider();
-      console.log('[llm] selected provider: zerog');
-      return _provider;
-    } catch (e) {
-      console.warn('[llm] zerog init failed, falling through:', (e as Error).message);
+class ChainedLLMProvider implements LLMProvider {
+  name = 'zerog+openai';
+  private zerog: ZeroGLLMProvider | null;
+  private openai: OpenAIProvider | null;
+  lastUsed: string | null = null;
+  lastError: string | null = null;
+
+  constructor(zerog: ZeroGLLMProvider | null, openai: OpenAIProvider | null) {
+    this.zerog = zerog;
+    this.openai = openai;
+  }
+
+  async complete(messages: ChatMessage[], opts?: CompleteOpts): Promise<string> {
+    if (this.zerog) {
+      try {
+        const out = await this.zerog.complete(messages, opts);
+        this.lastUsed = 'zerog';
+        this.lastError = null;
+        return out;
+      } catch (e) {
+        this.lastError = (e as Error).message.slice(0, 200);
+        console.warn('[llm] zerog failed:', this.lastError);
+      }
     }
+    if (this.openai) {
+      try {
+        const out = await this.openai.complete(messages, opts);
+        this.lastUsed = 'openai';
+        return out;
+      } catch (e) {
+        this.lastError = (e as Error).message.slice(0, 200);
+        console.error('[llm] openai failed:', this.lastError);
+      }
+    }
+    throw new LLMUnavailableError(this.lastError ?? 'no providers configured');
   }
-  if (env.OPENAI_API_KEY) {
-    _provider = new OpenAIProvider();
-    console.log('[llm] selected provider: openai');
-    return _provider;
+}
+
+let _provider: ChainedLLMProvider | null = null;
+
+export function getLLM(): ChainedLLMProvider {
+  if (_provider) return _provider;
+  const zerog =
+    env.OG_BROKER_PROVIDER && env.DEPLOYER_PRIVATE_KEY ? new ZeroGLLMProvider() : null;
+  const openai = env.OPENAI_API_KEY ? new OpenAIProvider() : null;
+  if (!zerog && !openai) {
+    console.warn('[llm] no providers configured — /chat/message will return 503');
+  } else {
+    console.log(
+      `[llm] providers ready: ${[zerog && 'zerog', openai && 'openai'].filter(Boolean).join(', ')}`
+    );
   }
-  _provider = new MockProvider();
-  console.log('[llm] selected provider: mock (no OPENAI_API_KEY or OG_BROKER_PROVIDER)');
+  _provider = new ChainedLLMProvider(zerog, openai);
   return _provider;
 }
 
-// for tests
 export function _resetLLM(): void {
   _provider = null;
+}
+
+export interface LLMStatus {
+  zerog: { configured: boolean };
+  openai: { configured: boolean };
+  lastUsed: string | null;
+  lastError: string | null;
+}
+
+export function getLLMStatus(): LLMStatus {
+  const p = getLLM();
+  return {
+    zerog: { configured: Boolean(env.OG_BROKER_PROVIDER && env.DEPLOYER_PRIVATE_KEY) },
+    openai: { configured: Boolean(env.OPENAI_API_KEY) },
+    lastUsed: p.lastUsed,
+    lastError: p.lastError,
+  };
 }

@@ -3,7 +3,8 @@
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { WalletBalance } from '@/components/WalletBalance';
 
 interface TopNavProps {
   variant?: 'landing' | 'app';
@@ -11,6 +12,8 @@ interface TopNavProps {
 
 export default function TopNav({ variant = 'app' }: TopNavProps) {
   const { authenticated, login, logout, user } = usePrivy();
+  const { wallets } = useWallets();
+  const connectedAddress = wallets[0]?.address as `0x${string}` | undefined;
   const wallet = user?.wallet?.address;
   const email = user?.email?.address;
   const label = email ?? (wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : 'me');
@@ -47,6 +50,9 @@ export default function TopNav({ variant = 'app' }: TopNavProps) {
           >
             Earnings
           </Link>
+          {authenticated && connectedAddress && (
+            <WalletBalance address={connectedAddress} />
+          )}
           {variant === 'landing' ? (
             <Link
               href="/create"

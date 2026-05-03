@@ -4,15 +4,23 @@ import { useEffect, useRef, useState } from 'react';
 interface Props {
   onComplete: (blob: Blob) => void;
   maxSeconds?: number;
+  mode?: 'record' | 'upload';
+  onModeChange?: (mode: 'record' | 'upload') => void;
 }
 
-export function VoiceRecorder({ onComplete, maxSeconds = 60 }: Props) {
+export function VoiceRecorder({
+  onComplete,
+  maxSeconds = 60,
+  mode = 'record',
+  onModeChange,
+}: Props) {
   const [recording, setRecording] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(maxSeconds);
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
 
   useEffect(
     () => () => {
@@ -55,27 +63,63 @@ export function VoiceRecorder({ onComplete, maxSeconds = 60 }: Props) {
     }, 1000);
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadedUrl(URL.createObjectURL(file));
+    onComplete(file);
+  }
+
   return (
     <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 backdrop-blur">
-      <p className="mb-3 text-sm text-neutral-400">
-        Record up to {maxSeconds}s of natural speech. Voice character matters more than what you say.
-      </p>
-      {recording ? (
-        <button
-          onClick={stop}
-          className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-600"
-        >
-          Stop ({secondsLeft}s)
-        </button>
+      {mode === 'record' ? (
+        <>
+          <p className="mb-3 text-sm text-neutral-400">
+            Record up to {maxSeconds}s of natural speech. Voice character matters more than what you say.
+          </p>
+          {recording ? (
+            <button
+              onClick={stop}
+              className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-600"
+            >
+              Stop ({secondsLeft}s)
+            </button>
+          ) : (
+            <button
+              onClick={start}
+              className="rounded-full bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white"
+            >
+              {recordedUrl ? 'Re-record' : 'Start recording'}
+            </button>
+          )}
+          {recordedUrl && <audio src={recordedUrl} controls className="mt-3 w-full" />}
+        </>
       ) : (
+        <>
+          <p className="mb-3 text-sm text-neutral-400">
+            Upload an audio file. Accepted: any format supported by OpenVoice (wav, mp3, m4a, flac, ogg…).
+          </p>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white">
+            {uploadedUrl ? 'Replace file' : 'Choose file'}
+            <input
+              type="file"
+              accept="audio/*"
+              className="sr-only"
+              onChange={handleFileChange}
+            />
+          </label>
+          {uploadedUrl && <audio src={uploadedUrl} controls className="mt-3 w-full" />}
+        </>
+      )}
+
+      {onModeChange && (
         <button
-          onClick={start}
-          className="rounded-full bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white"
+          onClick={() => onModeChange(mode === 'record' ? 'upload' : 'record')}
+          className="mt-4 block text-xs text-neutral-500 underline-offset-2 hover:underline"
         >
-          {recordedUrl ? 'Re-record' : 'Start recording'}
+          {mode === 'record' ? 'or upload a file instead' : 'or record instead'}
         </button>
       )}
-      {recordedUrl && <audio src={recordedUrl} controls className="mt-3 w-full" />}
     </div>
   );
 }

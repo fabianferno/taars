@@ -51,6 +51,7 @@ export default function CreatePage() {
   const [step, setStep] = useState<WizardStep>('name');
   const [ensLabel, setEnsLabel] = useState('');
   const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [voiceMode, setVoiceMode] = useState<'record' | 'upload'>('record');
   const [personality, setPersonality] = useState<PersonalityAnswers>(emptyPersonality);
   const [price, setPrice] = useState('0.05');
   const [error, setError] = useState<string | null>(null);
@@ -228,7 +229,11 @@ export default function CreatePage() {
             is processed locally via OpenVoice (production target: TEE-backed 0G Compute).
           </Help>
           <div className="mt-4">
-            <VoiceRecorder onComplete={setVoiceBlob} />
+            <VoiceRecorder
+                onComplete={setVoiceBlob}
+                mode={voiceMode}
+                onModeChange={setVoiceMode}
+              />
           </div>
           <NextRow>
             <SecondaryBtn onClick={() => setStep('name')}>Back</SecondaryBtn>

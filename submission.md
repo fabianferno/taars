@@ -19,31 +19,142 @@ Artificial Intelligence
 Mint yourself as an AI. Own the ENS, own the INFT, earn USDC every minute someone chats.
 
 ## Description (min 280 chars)
-taars lets anyone mint a sovereign AI replica of themselves — voice, personality, and writing style — as an ERC-7857 Intelligent NFT (INFT) on 0G Chain. Each replica is identified by an ENS subname (`<you>.taars.eth`) whose text records form a structured agent manifest (`taars.inft`, `taars.storage`, `taars.voice`, `taars.price`, `taars.currency`, `taars.network`, `taars.owner`, …). Whoever owns the ENS name owns the INFT, and ownership of both moves together via an `iTransfer` ceremony.
+taars is a protocol for **sovereign AI replicas of real people** — your voice, your personality, your writing style, minted as an ERC-7857 Intelligent NFT (INFT) on 0G Chain and identified by an ENS subname (`<you>.taars.eth`) that *is* the replica's address on the open internet. The same wallet that owns the ENS name owns the INFT. There is no central database mapping names to agents — every replica is fully described by what's on-chain (the INFT and its `IntelligentData[]` roots) and what's in 0G Storage (the encrypted soul, skills, and voice profile). Anyone with a wallet, an ENS resolver, and an HTTP client can find a replica and talk to it.
 
-The encrypted "soul" (system prompt), skills, and voice profile are uploaded to 0G Storage; the merkle roots become the `IntelligentData[]` on the INFT and are also published as resolver text records, so any third-party app can discover and talk to a replica purely from ENS — no private database. Voice cloning runs in an isolated OpenVoice service designed for TEE deployment so raw samples never leave the trusted boundary.
+When you mint, four things happen as one ceremony. (1) Your voice samples are processed by an isolated OpenVoice service designed for TEE deployment, so raw audio never leaves the trusted boundary — only a trained, encrypted voice profile does. (2) Three encrypted artifacts are uploaded to 0G Storage: `soul.md` (your system prompt and personality), `skills.json` (capabilities, tools, knowledge), and `voice.json` (the OpenVoice profile reference). Each upload returns a merkle root. (3) An ERC-7857 token is minted on 0G Galileo whose `IntelligentData[]` array binds those merkle roots on-chain — that's the proof of embedded intelligence. (4) An ENS subname on Sepolia is created and populated with eleven structured text records (`taars.inft`, `taars.storage`, `taars.voice`, `taars.price`, `taars.currency`, `taars.network`, `taars.owner`, `taars.created`, `taars.version`, plus `description`/`url`/`avatar`) in a single `PublicResolver.multicall`, then `safeTransferFrom`'d to the minter as a wrapped ERC-1155.
 
-Anyone can chat or voice-call a replica. Each session is gated by a real HTTP 402 (x402) challenge, settled on a Sepolia `TaarsBilling` contract in USDC with a 90/7/3 revenue split (owner / treasury / original creator), and post-settle a KeeperHub workflow attests the on-chain revenue update so every payment has a guaranteed audit trail. A Discord bot integration deploys the replica to a server's voice channel — also lifecycle-tracked through a KeeperHub workflow.
+The text records are **load-bearing infrastructure, not metadata**. The chat pipeline resolves the ENS name → reads `taars.storage` → pulls the encrypted soul from 0G Storage → decrypts → uses it as the system prompt. The x402 paywall reads `taars.price` to compute the challenge amount in real time. Discovery (`/explore`, `/[ensName]`) reads ENS directly. The replica is *literally* defined by what its ENS resolver says it is.
+
+Anyone can chat or voice-call a replica. Every session begins with a real **HTTP 402** response carrying the **x402** challenge envelope; the client pays in USDC on a Sepolia `TaarsBilling` contract, which enforces a 90/7/3 split (current INFT owner / treasury / original creator) — verified live against canonical 0G `ownerOf`, so revenue follows the INFT through transfers. After settlement a **KeeperHub** workflow fires, reads `getRevenue` back from the contract, and emits a cross-referenceable `executionId` into a JSONL audit log on the server. Two more KeeperHub workflows attest `iTransfer` re-encryption (reading 0G `ownerOf` to confirm the new owner) and Discord VC bot deploy lifecycles. Every on-chain action — payment, transfer, deploy — has an independent, deep-linkable audit trail.
+
+The same replica can be deployed into a Discord voice channel: the bot joins a VC, transcribes incoming voice, replies through the LLM, and speaks the response in the cloned voice — all gated by the same paywall and lifecycle-tracked through KeeperHub. Because the agent identity is just an ENS name, third-party clients (an MCP server is included) can resolve and chat with a replica without any taars-specific API.
 
 ## How it's made
-**Stack.** Monorepo (pnpm) with Next.js 15 PWA (`web/`, Privy embedded wallet), a Hono server (`server/`), Hardhat contracts (`contracts/`), a Python OpenVoice service (`openvoice/`), a Discord VC bot (`discord-bot/`), an MCP server (`mcp/`), and a shared TS SDK (`sdk/`).
 
-**0G — INFT (ERC-7857).** `TaarsAgentNFT` is a UUPS proxy implementing `IERC7857` + `IERC7857Metadata` deployed on 0G Galileo testnet (chainId 16602) at `0xD2063f53Fd1c1353113796B56c45a78A65731d52`. We use `IntelligentData[]` per token to bind `(dataDescription, dataHash)` triples to encrypted blobs, plus `iTransfer` (re-encryption ceremony) and `iClone` (licensed copies). 0G Storage uploads use the real `@0gfoundation/0g-ts-sdk` (`Indexer.upload()` + `MemData`) — see `server/src/services/storage.ts`. Each replica writes three encrypted blobs (soul / skills / voice); their merkle roots are the on-chain proof of embedded intelligence and are also pulled at chat time to decrypt the system prompt.
+### System diagram
 
-**ENS — identity, not cosmetics.** Parent `taars.eth` is registered on Sepolia via the v3 ETHRegistrarController commit-reveal. Subnames are created with `NameWrapper.setSubnodeRecord`, then 11 text records are written in a single `PublicResolver.multicall`, then the wrapped 1155 is `safeTransferFrom`'d to the user — so the user becomes the on-chain owner of the subname. The `/explore` and `/[ensName]` pages and the chat pipeline (`server/src/routes/chat.ts`) read agents directly from ENS (`taars.storage` to fetch the soul, `taars.price` to seed the x402 paywall). Source: `server/src/services/ens.ts`.
+```mermaid
+flowchart TB
+    User([User / Caller])
+    Web[web/<br/>Next.js 15 PWA<br/>Privy embedded wallet]
+    Server[server/<br/>Hono · ESM Node]
+    Discord[discord-bot/<br/>VC TTS bot]
+    MCP[mcp/<br/>resolve + chat by ENS]
+    OV[openvoice/<br/>Python · TEE-deployable]
 
-**KeeperHub — guaranteed execution + audit.** Three production workflows wired in `server/src/services/keeperhub.ts`:
-- `billingSettle` (`9ucfocpbig3urovmnq6v9`) — fires from `server/src/services/billing.ts` after settle, reads `getRevenue` on Sepolia to attest revenue actually accrued.
-- `inftTransfer` (`pgkehp9z83o3yeinkh8r2`) — fires from `server/src/services/transfer.ts` after `iTransfer`, reads `ownerOf` on 0G to confirm the new owner.
-- `discordDeploy` (`49amr3waaqxy9vlw4wznn`) — fires from `server/src/routes/deploy.ts` on start + end of a Discord VC bot deploy.
+    subgraph Sepolia[Ethereum Sepolia]
+        ENS[ENS<br/>NameWrapper · PublicResolver]
+        Bill[TaarsBilling<br/>+ MockUSDC<br/>90/7/3 split]
+    end
 
-Every workflow execution writes its `executionId` into `server/.audit/*.jsonl` so on-chain actions and KH runs can be cross-referenced from either side.
+    subgraph OG["0G Galileo (chainId 16602)"]
+        INFT[TaarsAgentNFT<br/>ERC-7857 · UUPS proxy<br/>IntelligentData]
+        Stor[(0G Storage<br/>encrypted blobs<br/>soul · skills · voice)]
+    end
 
-**x402 payments.** `/chat/message` and `/chat/transcribe` return a real HTTP 402 with the x402 challenge envelope (`scheme: "exact"`, `asset`, `network: sepolia`, `payTo`, `maxAmountRequired` derived from the ENS `taars.price` text record). Settlement on `TaarsBilling` (`0xCE5860AA731439a80F39852b6296057313831870`) → `billingSettle` KeeperHub attestation closes the loop: x402 challenge → contract settle → KH attestation as a single audit trail.
+    KH[KeeperHub<br/>billingSettle · inftTransfer · discordDeploy]
+    Audit[(server/.audit/<br/>*.jsonl)]
+    LLM[LLM provider]
 
-**TEE narrative (honest).** The OpenVoice service runs as an isolated process designed for TEE deployment (Phala / Marlin / Nautilus-class GPU enclave) so raw voice samples never leave the boundary; only the trained voice profile is encrypted and uploaded. In this repo it runs as a standalone HTTP service for local dev.
+    User --> Web
+    User --> Discord
+    User --> MCP
+    Web --> Server
+    Discord --> Server
+    MCP --> Server
 
-**Notable hacky bits.** Wrapping all 11 ENS text-record writes into a single `multicall` (one tx instead of 11). Operator pattern that mints subname → writes records → transfers wrapped 1155 in one ceremony. Treating ENS resolver text records as the canonical agent manifest so the chat pipeline has zero database dependency. Coupling x402 / on-chain settle / KeeperHub attestation into one cross-referenceable audit ID.
+    Server -->|encrypt + upload| Stor
+    Server -->|mint + iTransfer| INFT
+    Server -->|commit-reveal · multicall · transfer| ENS
+    Server -->|x402 challenge| User
+    User -->|USDC settle| Bill
+    Server -->|resolve ENS · read text records| ENS
+    Server -->|fetch encrypted soul| Stor
+    Server -->|decrypt · system prompt| LLM
+    OV -->|voice profile| Server
+
+    Bill -.post-settle.-> KH
+    INFT -.post-iTransfer.-> KH
+    Server -.deploy lifecycle.-> KH
+    KH -->|verify on-chain state| Bill
+    KH -->|verify ownerOf| INFT
+    KH -->|executionId| Audit
+
+    classDef chain fill:#1a1a2e,stroke:#7b61ff,color:#fff
+    classDef store fill:#0f3460,stroke:#22d3ee,color:#fff
+    classDef svc fill:#16213e,stroke:#fbbf24,color:#fff
+    class INFT,Bill,ENS chain
+    class Stor,Audit store
+    class KH,LLM,OV svc
+```
+
+### Stack
+
+Monorepo on pnpm workspaces. **`web/`** — Next.js 15 App Router PWA with Privy embedded wallets, wagmi/viem for read calls, Tailwind + shadcn/ui, framer-motion, three.js / R3F for the replica viewer. **`server/`** — Hono on `@hono/node-server` (Node ESM, `.js` import suffixes), vitest for tests. **`contracts/`** — Hardhat with OpenZeppelin upgradeable (UUPS), ethers v6, typechain. **`sdk/`** — shared TS types and ABIs regenerated by `pnpm sdk:abi` after every contract change so `web/` and `server/` stay in lockstep. **`openvoice/`** — standalone Python HTTP service (FastAPI-style) running OpenVoice; intentionally outside the pnpm workspace because in production it runs in a TEE GPU enclave. **`discord-bot/`** — discord.js, Opus → Whisper transcription, OpenVoice TTS reply. **`mcp/`** — Model Context Protocol server exposing `resolve(ensName)` and `chat(ensName, message)` so any MCP client can talk to a replica.
+
+### 0G — INFT (ERC-7857)
+
+`TaarsAgentNFT` is a UUPS proxy implementing `IERC7857` + `IERC7857Metadata`, deployed on 0G Galileo testnet (chainId 16602) at `0xD2063f53Fd1c1353113796B56c45a78A65731d52`. The contract stores an `IntelligentData[]` per token — a list of `(dataDescription, dataHash)` triples where each `dataHash` is a 0G Storage merkle root. Every replica writes exactly three entries: `soul`, `skills`, and `voice`. We exercise `iTransfer` (the re-encryption ceremony for transferring an INFT to a new owner) and `iClone` (licensed copies for AI-as-a-Service leasing). The contract also maintains an authorized-users mapping for read-only access without ownership transfer.
+
+**0G Storage uploads use the real SDK** — `@0gfoundation/0g-ts-sdk` `Indexer.upload(MemData, …)` — see `server/src/services/storage.ts`. Encryption happens *before* upload in `server/src/services/encrypt.ts` (AES with `ENCRYPTION_KEY`), so what 0G sees is opaque ciphertext; the merkle root commits to the ciphertext, and the decryption key is held by the agent operator. At chat time the server resolves ENS → reads `taars.storage` → pulls the encrypted soul → decrypts → uses it as the LLM system prompt. The merkle roots aren't just pointers; they're the canonical proof that a specific token corresponds to specific intelligence.
+
+Mint orchestration lives in `server/src/services/inft.ts` and `routes/mint.ts`. Galileo RPC has a known issue where `eth_getTransactionReceipt` returns "not found" for valid txs for 10–30 seconds after broadcast, so we wrote `waitForReceiptResilient` (inft.ts:66–102) — a poller that tolerates transient `not found` for up to eight minutes. Standard `viem.waitForTransactionReceipt` fails on this.
+
+### ENS — identity, not cosmetics
+
+Parent `taars.eth` is registered on Sepolia via the v3 ETHRegistrarController (`0xFED6a969AaA60E4961FCD3EBF1A2e8913ac65B72`) using a commit-reveal flow (idempotent, so re-runs are safe). All replica logic lives in `server/src/services/ens.ts`:
+
+1. `NameWrapper.setSubnodeRecord(parent, label, owner=operator, resolver=PublicResolver, ttl=0, fuses=0, expiry=type(uint64).max)` — the wrapper auto-caps expiry at parent expiry, so this is the right "subname forever" pattern.
+2. **All eleven text records in one tx** via `PublicResolver.multicall([...11 setText calls...])`. This is the single most impactful gas optimization in the pipeline — 11 records would otherwise be 11 transactions and 11 user-facing loading states; multicall collapses it to one. Cost dropped roughly 10×.
+3. `NameWrapper.safeTransferFrom(operator, user, tokenId)` — hands the wrapped ERC-1155 to the user, who is now the canonical on-chain owner.
+
+The **operator pattern** (deployer key creates → writes records → transfers) is what makes this a single ceremony from the user's perspective. They sign one Privy transaction at the front of the flow; the rest is operator-mediated and finishes with them owning the subname.
+
+The chat pipeline (`server/src/routes/chat.ts`) and the discovery pages (`web/src/app/[ensName]`, `/explore`) read agents *directly* from ENS resolver text records — no private DB. `taars.storage` is read to fetch the soul; `taars.price` is read to seed the x402 paywall amount. Text records are infrastructure.
+
+### x402 paywall
+
+`server/src/middleware/x402.ts` returns a real **HTTP 402** with the x402 challenge envelope on `/chat/message` and `/chat/transcribe`:
+
+```json
+{
+  "x402Version": 1,
+  "accepts": [{
+    "scheme": "exact",
+    "network": "sepolia",
+    "asset": "<MockUSDC address>",
+    "payTo": "<TaarsBilling address>",
+    "maxAmountRequired": "<derived from ENS taars.price>"
+  }]
+}
+```
+
+`maxAmountRequired` is derived **live** from the agent's ENS `taars.price` text record, not a config constant. The client pays on `TaarsBilling` (`0xCE5860AA731439a80F39852b6296057313831870`), which enforces the 90/7/3 split (owner / treasury / original creator) and verifies the owner against canonical 0G `ownerOf` so revenue follows INFT transfers. Post-settle the `billingSettle` KeeperHub workflow attests, closing a single audit loop: **x402 challenge → contract settle → KH attestation**.
+
+### KeeperHub — guaranteed execution + audit
+
+Three production workflows are wired in `server/src/services/keeperhub.ts`. Each fires from a specific server route, reads on-chain state to attest the action actually landed, and writes its `executionId` into a JSONL audit log:
+
+| Workflow | ID | Fires from | What it attests |
+|---|---|---|---|
+| `billingSettle` | `9ucfocpbig3urovmnq6v9` | `services/billing.ts` (post-settle) | Reads `getRevenue` on Sepolia |
+| `inftTransfer` | `pgkehp9z83o3yeinkh8r2` | `services/transfer.ts` (post-`iTransfer`) | Reads `ownerOf` on 0G |
+| `discordDeploy` | `49amr3waaqxy9vlw4wznn` | `routes/deploy.ts` (start + end) | Lifecycle audit for the VC bot |
+
+Audit cross-reference lives in `server/.audit/{sessions,deploys,transfers}.jsonl`. Each entry pairs the on-chain tx hash with the KH `executionId`, so any payment / transfer / deploy can be traced from either side. KeeperHub's `web3/get-transaction` and `web3/read-contract` action nodes covered every "did the tx land?" / "what's the on-chain state now?" need without custom action code.
+
+### TEE narrative (honest)
+
+The OpenVoice service runs as an isolated process designed for TEE deployment (Phala / Marlin / Nautilus-class GPU enclaves) so raw voice samples never leave the trusted boundary; only the trained, encrypted voice profile is uploaded to 0G Storage. In this repo it runs as a standalone HTTP service on `:5005` for local dev. The boundary is real — voice samples never enter the Hono server's address space — but the production TEE deployment is post-hackathon work.
+
+### Notable hacky bits
+
+- **One-multicall mint** — eleven ENS text records in a single tx via `PublicResolver.multicall`, ~10× gas reduction and one user-facing loading state.
+- **Operator-pattern subname ceremony** — deployer creates → writes records → `safeTransferFrom`s the wrapped 1155, all atomic from the user's perspective. The user signs one Privy tx and ends up the canonical on-chain owner.
+- **Resilient receipt poller** for Galileo RPC's transient "not found" window (`services/inft.ts`), tolerates ~8 minutes of indexer flakiness.
+- **ENS as zero-DB agent registry** — chat pipeline, paywall, and discovery all read ENS resolver text records as their source of truth.
+- **One audit ID across three layers** — x402 challenge ID → on-chain settle tx → KH `executionId`, all cross-referenced in JSONL so any single record locates the other two.
+- **Owner-follows-INFT revenue** — `TaarsBilling` checks 0G `ownerOf` at distribution time, not at session start, so the owner share automatically follows the INFT through transfers without re-configuring the billing contract.
 
 ---
 

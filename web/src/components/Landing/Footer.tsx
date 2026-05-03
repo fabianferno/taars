@@ -46,9 +46,34 @@ export default function Footer() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-surface-dark/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground/60">
-            Powered by 0G &middot; ENS
-          </p>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-muted-foreground/60 font-mono uppercase tracking-wider">
+              Powered by
+            </span>
+            <div className="flex items-center gap-3">
+              <Image
+                src="/0g-logo.png"
+                alt="0G"
+                width={20}
+                height={20}
+                className="rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+              />
+              <Image
+                src="/ens-logo.jpeg"
+                alt="ENS"
+                width={20}
+                height={20}
+                className="rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+              />
+              <Image
+                src="/keeperhub-logo.png"
+                alt="KeeperHub"
+                width={20}
+                height={20}
+                className="rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+              />
+            </div>
+          </div>
           <p className="text-xs text-muted-foreground/60">
             &copy; {new Date().getFullYear()} taars. All rights reserved.
           </p>

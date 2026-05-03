@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Power } from 'lucide-react';
+import { Send, Power, Mic, Square, Loader2 } from 'lucide-react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import type { ReplicaProfile } from '@/lib/ens';
+import { transcribeAudio } from '@/lib/api';
 import { useChatSession } from '@/hooks/useChatSession';
 import { useLlmStatus } from '@/hooks/useLlmStatus';
 import { useApprovedSpend } from '@/hooks/useApprovedSpend';
@@ -26,6 +27,11 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
   const [input, setInput] = useState('');
   const [voiceMode, setVoiceMode] = useState(true);
   const [backendOffline, setBackendOffline] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   // Atomic-units allowance target = rate * APPROVAL_MINUTES
   const approvalAtomic = useMemo(() => {
@@ -93,6 +99,56 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
 
   async function handleEnd() {
     await chat.end();
+  }
+
+  async function startRecording() {
+    if (!chat.session || recording || transcribing || chat.sending) return;
+    setMicError(null);
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setMicError('microphone not supported in this browser');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' });
+        chunksRef.current = [];
+        if (!chat.session || blob.size === 0) return;
+        setTranscribing(true);
+        try {
+          const text = (await transcribeAudio(chat.session.sessionId, blob)).trim();
+          if (text) await chat.send(text);
+          else setMicError('no speech detected');
+        } catch (e) {
+          setMicError(e instanceof Error ? e.message : 'transcription failed');
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recorderRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch (e) {
+      setMicError(e instanceof Error ? e.message : 'microphone permission denied');
+    }
+  }
+
+  function stopRecording() {
+    const rec = recorderRef.current;
+    if (rec && rec.state !== 'inactive') rec.stop();
+    recorderRef.current = null;
+    setRecording(false);
   }
 
   // ----- Render branches -----
@@ -215,12 +271,26 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
                 void handleSend();
               }
             }}
-            placeholder="Type a message…"
-            className="flex-1 rounded-xl border border-surface-dark/70 bg-white px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none"
+            placeholder={recording ? 'Listening…' : transcribing ? 'Transcribing…' : 'Type a message…'}
+            disabled={recording || transcribing}
+            className="flex-1 rounded-xl border border-surface-dark/70 bg-white px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none disabled:bg-surface-dark/20"
           />
           <button
+            onClick={recording ? stopRecording : startRecording}
+            disabled={transcribing || chat.sending}
+            title={recording ? 'Stop recording' : 'Speak'}
+            aria-label={recording ? 'Stop recording' : 'Speak'}
+            className={`inline-flex items-center justify-center rounded-full px-3 py-2.5 text-sm font-medium transition disabled:opacity-50 ${
+              recording
+                ? 'bg-destructive text-white hover:bg-destructive/90 animate-pulse'
+                : 'border border-surface-dark/70 bg-white text-foreground hover:bg-surface-dark/10'
+            }`}
+          >
+            {transcribing ? <Loader2 size={14} className="animate-spin" /> : recording ? <Square size={14} /> : <Mic size={14} />}
+          </button>
+          <button
             onClick={handleSend}
-            disabled={!input.trim() || chat.sending}
+            disabled={!input.trim() || chat.sending || recording || transcribing}
             className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-white transition hover:bg-accent-light disabled:opacity-50"
           >
             <Send size={14} />
@@ -229,6 +299,7 @@ export function ChatPanel({ profile }: { profile: ReplicaProfile }) {
         </div>
 
         {chat.error && <p className="text-xs text-destructive">{chat.error}</p>}
+        {micError && <p className="text-xs text-destructive">{micError}</p>}
       </div>
 
       {chat.receipt && (

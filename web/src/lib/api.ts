@@ -203,6 +203,22 @@ export async function sendMessage(
   return jsonOrThrow<ChatMessageResponse>(res, 'chat/message');
 }
 
+export async function transcribeAudio(
+  sessionId: string,
+  audio: Blob,
+  filename = 'audio.webm'
+): Promise<string> {
+  const form = new FormData();
+  form.append('audio', audio, filename);
+  const res = await fetch(`${SERVER_URL}/chat/transcribe`, {
+    method: 'POST',
+    headers: { 'X-Taars-Session': sessionId },
+    body: form,
+  });
+  const j = (await jsonOrThrow<{ text: string }>(res, 'chat/transcribe'));
+  return j.text ?? '';
+}
+
 export async function endChat(sessionId: string): Promise<ChatEndResponse> {
   const res = await fetch(`${SERVER_URL}/chat/end`, {
     method: 'POST',

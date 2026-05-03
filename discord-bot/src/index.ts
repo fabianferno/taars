@@ -201,19 +201,39 @@ async function joinVc(state: DeployState): Promise<void> {
   });
   connection.on('subscribe', () => {});
   // Inner networking state (UDP discovery) is the most common failure point.
+  const hookedNetworking = new WeakSet<object>();
+  const hookedWs = new WeakSet<object>();
+  const hookNetworkingState = (nstate: any) => {
+    if (!nstate || typeof nstate !== 'object') return;
+    const ws = nstate.ws;
+    if (ws && !hookedWs.has(ws)) {
+      hookedWs.add(ws);
+      ws.on?.('close', (code: number, reason: Buffer) =>
+        console.warn(
+          `[discord-bot] voice WS closed ${state.guildId}: code=${code} reason=${reason?.toString?.() ?? ''}`
+        )
+      );
+      ws.on?.('error', (e: Error) =>
+        console.warn(`[discord-bot] voice WS error ${state.guildId}:`, e.message)
+      );
+    }
+  };
   connection.on('stateChange', (_o: any, n: any) => {
-    if (n.networking) {
+    if (n.networking && !hookedNetworking.has(n.networking)) {
+      hookedNetworking.add(n.networking);
       n.networking.on('debug', (msg: string) =>
         console.log(`[discord-bot] networking debug ${state.guildId}:`, msg)
       );
       n.networking.on('error', (e: Error) =>
         console.warn(`[discord-bot] networking error ${state.guildId}:`, e.message)
       );
-      n.networking.on('stateChange', (oo: any, nn: any) =>
+      n.networking.on('stateChange', (oo: any, nn: any) => {
         console.log(
           `[discord-bot] networking ${state.guildId}: ${oo.code}->${nn.code}`
-        )
-      );
+        );
+        hookNetworkingState(nn);
+      });
+      hookNetworkingState(n.networking.state);
     }
   });
   state.connection = connection;

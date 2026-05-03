@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import OpenAI, { toFile } from 'openai';
 import { env } from '../env.js';
 import {
   startSession,
@@ -245,6 +246,46 @@ chat.get('/session/:sessionId', (c) => {
     expectedUsd: expectedUsd2dp(session.ratePerMinUsd, durationSeconds),
     billingTerms: billingTerms(session),
   });
+});
+
+// POST /chat/transcribe — multipart audio → Whisper text. Gated by session.
+chat.post('/transcribe', x402Required, async (c) => {
+  if (!env.OPENAI_API_KEY) {
+    return c.json({ ok: false, error: 'whisper_not_configured' }, 503);
+  }
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ ok: false, error: 'invalid_form' }, 400);
+  }
+  const file = form.get('audio');
+  if (!(file instanceof File)) {
+    return c.json({ ok: false, error: 'missing_audio' }, 400);
+  }
+  // Cap upload at ~15 MB.
+  if (file.size > 15 * 1024 * 1024) {
+    return c.json({ ok: false, error: 'audio_too_large' }, 413);
+  }
+  try {
+    const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const upload = await toFile(
+      Buffer.from(await file.arrayBuffer()),
+      file.name || 'audio.webm',
+      { type: file.type || 'audio/webm' }
+    );
+    const result = await client.audio.transcriptions.create({
+      file: upload,
+      model: 'whisper-1',
+    });
+    return c.json({ ok: true, text: result.text ?? '' });
+  } catch (e) {
+    console.error('[chat/transcribe] failed:', e);
+    return c.json(
+      { ok: false, error: 'transcribe_failed', detail: (e as Error).message.slice(0, 200) },
+      502
+    );
+  }
 });
 
 chat.get('/llm-status', (c) => {

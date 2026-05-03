@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 const ACCENT = "#ea580c";
 
@@ -536,8 +537,24 @@ function Slide01Title() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
+        transition={{ duration: 0.7, delay: 0.9 }}
+        className="flex items-center gap-5 mt-10"
+      >
+        <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/30">
+          Powered by
+        </span>
+        <div className="flex items-center gap-4">
+          <Image src="/0g-logo.png" alt="0G" width={22} height={22} className="rounded-sm opacity-70" />
+          <Image src="/ens-logo.jpeg" alt="ENS" width={22} height={22} className="rounded-sm opacity-70" />
+          <Image src="/keeperhub-logo.png" alt="KeeperHub" width={22} height={22} className="rounded-sm opacity-70" />
+        </div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 1, delay: 1.2 }}
-        className="mt-12"
+        className="mt-10"
       >
         <ChevronDown className="w-5 h-5 text-white/30 animate-bounce mx-auto" />
       </motion.div>
@@ -679,7 +696,7 @@ function Slide06Tech() {
           Every layer is cryptographically attested. No black boxes.
         </p>
         <div className="flex flex-wrap gap-2">
-          {["OpenVoice", "0G Compute", "ERC-7857", "ENS", "x402"].map((t) => (
+          {["OpenVoice", "0G Compute", "ERC-7857", "ENS", "x402", "KeeperHub"].map((t) => (
             <span
               key={t}
               className="px-2 py-1 rounded-full text-xs font-mono border"
@@ -688,6 +705,17 @@ function Slide06Tech() {
               {t}
             </span>
           ))}
+        </div>
+
+        <div className="mt-8 pt-6 border-t flex items-center gap-5" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/30">
+            Built on
+          </span>
+          <div className="flex items-center gap-4">
+            <Image src="/0g-logo.png" alt="0G" width={22} height={22} className="rounded-sm opacity-70" />
+            <Image src="/ens-logo.jpeg" alt="ENS" width={22} height={22} className="rounded-sm opacity-70" />
+            <Image src="/keeperhub-logo.png" alt="KeeperHub" width={22} height={22} className="rounded-sm opacity-70" />
+          </div>
         </div>
       </div>
       <div className="flex justify-center">

@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title TaarsBilling
@@ -32,9 +31,6 @@ contract TaarsBilling is Ownable {
 
     /// @notice USDC token (or MockUSDC for hackathon).
     IERC20 public immutable usdc;
-
-    /// @notice INFT contract used for ownership and access checks.
-    address public immutable inft;
 
     /// @notice Platform treasury address (used for accounting; payout via claimTreasury).
     address public treasury;
@@ -106,15 +102,12 @@ contract TaarsBilling is Ownable {
         IERC20 usdc_,
         address treasury_,
         address oracle_,
-        address inft_,
         address owner_
     ) Ownable(owner_) {
         require(address(usdc_) != address(0), "TaarsBilling: usdc=0");
         require(treasury_ != address(0), "TaarsBilling: treasury=0");
         require(oracle_ != address(0), "TaarsBilling: oracle=0");
-        require(inft_ != address(0), "TaarsBilling: inft=0");
         usdc = usdc_;
-        inft = inft_;
         treasury = treasury_;
         oracle = oracle_;
     }
@@ -125,11 +118,6 @@ contract TaarsBilling is Ownable {
 
     modifier onlyOracle() {
         require(msg.sender == oracle, "TaarsBilling: not oracle");
-        _;
-    }
-
-    modifier onlyTokenOwner(uint256 tokenId) {
-        require(IERC721(inft).ownerOf(tokenId) == msg.sender, "TaarsBilling: not token owner");
         _;
     }
 
@@ -160,8 +148,8 @@ contract TaarsBilling is Ownable {
     // INFT-owner facing
     // ---------------------------------------------------------------------
 
-    /// @notice INFT owner sets the per-minute price (in USDC atomic units).
-    function setRate(uint256 tokenId, uint128 ratePerMinute_) external onlyTokenOwner(tokenId) {
+    /// @notice Oracle sets the per-minute price (in USDC atomic units) for tokenId on behalf of the verified 0G INFT owner.
+    function setRate(uint256 tokenId, uint128 ratePerMinute_) external onlyOracle {
         ratePerMinute[tokenId] = ratePerMinute_;
         emit RateSet(tokenId, ratePerMinute_);
     }
@@ -175,8 +163,6 @@ contract TaarsBilling is Ownable {
     ///         price cannot move under the user during a live session.
     function startSession(bytes32 sessionId, uint256 tokenId) external {
         require(sessions[sessionId].caller == address(0), "TaarsBilling: session exists");
-        // Touch ownerOf to ensure the tokenId actually exists on the INFT.
-        IERC721(inft).ownerOf(tokenId);
 
         uint128 snapshotRate = ratePerMinute[tokenId];
 
@@ -251,13 +237,13 @@ contract TaarsBilling is Ownable {
     // Claims
     // ---------------------------------------------------------------------
 
-    /// @notice Pays out accrued revenue for `tokenId` to the current INFT owner.
-    ///         Anyone can call this (it always pays the rightful owner) so the
-    ///         server can pull on the user's behalf if desired.
-    function claimRevenue(uint256 tokenId) external {
+    /// @notice Oracle pays out accrued revenue for `tokenId` to the verified
+    ///         0G INFT owner. The oracle is responsible for reading ownership
+    ///         from the canonical INFT on the 0G chain before calling.
+    function claimRevenueFor(uint256 tokenId, address tokenOwner) external onlyOracle {
+        require(tokenOwner != address(0), "TaarsBilling: owner=0");
         uint256 amount = ownerBalance[tokenId];
         require(amount > 0, "TaarsBilling: nothing to claim");
-        address tokenOwner = IERC721(inft).ownerOf(tokenId);
         ownerBalance[tokenId] = 0;
         usdc.safeTransfer(tokenOwner, amount);
         emit RevenueClaimed(tokenId, tokenOwner, amount);

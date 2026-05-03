@@ -8,7 +8,7 @@ import {
   appendMessage,
   type ChatSession,
 } from '../services/sessions.js';
-import { getLLM, type ChatMessage } from '../services/llm.js';
+import { getLLM, LLMUnavailableError, getLLMStatus, type ChatMessage } from '../services/llm.js';
 import { synthesize } from '../services/voice.js';
 import { settleSessionOnChain } from '../services/billing.js';
 import { x402Required } from '../middleware/x402.js';
@@ -105,8 +105,22 @@ chat.post('/message', x402Required, async (c) => {
       maxTokens: 400,
     });
   } catch (e) {
+    if (e instanceof LLMUnavailableError) {
+      return c.json(
+        {
+          ok: false,
+          error: 'llm_unavailable',
+          reason: e.reason,
+          status: getLLMStatus(),
+        },
+        503
+      );
+    }
     console.error('[chat/message] llm failed:', e);
-    assistantText = `Sorry, I had trouble thinking just now. (${(e as Error).message.slice(0, 80)})`;
+    return c.json(
+      { ok: false, error: 'llm_failed', detail: (e as Error).message.slice(0, 200) },
+      502
+    );
   }
   const assistantMsg: ChatMessage = { role: 'assistant', content: assistantText };
   appendMessage(session.sessionId, assistantMsg);
@@ -155,7 +169,9 @@ chat.post('/end', async (c) => {
     session.sessionId,
     session.endedAt ?? Math.floor(Date.now() / 1000),
     session.ratePerMinUsd,
-    durationSeconds
+    durationSeconds,
+    '0',
+    session.ensFullName
   ).catch((e) => ({ skipped: true as const, reason: (e as Error).message }));
 
   const fastResult = await Promise.race([
@@ -229,6 +245,10 @@ chat.get('/session/:sessionId', (c) => {
     expectedUsd: expectedUsd2dp(session.ratePerMinUsd, durationSeconds),
     billingTerms: billingTerms(session),
   });
+});
+
+chat.get('/llm-status', (c) => {
+  return c.json({ ok: true, status: getLLMStatus() });
 });
 
 function expectedUsd2dp(ratePerMinUsd: string, durationSeconds: number): string {

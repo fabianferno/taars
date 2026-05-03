@@ -52,6 +52,7 @@ export interface MintErrorResponse {
     | 'inft'
     | 'ens.subname'
     | 'ens.records'
+    | 'ens.transfer'
     | 'unknown';
   error: string;
 }
@@ -83,3 +84,21 @@ export const TAARS_TEXT_KEYS = [
   'description',
   'url',
 ] as const;
+
+export type AgentVerification = 'self' | 'community';
+
+export interface AgentRecord {
+  name: string;
+  ens: string;
+  initials: string;
+  bio: string;
+  category: 'trending' | 'top' | 'new';
+  rating: number;
+  pricePerMinUsd: number;
+  gradient: string;
+  verification: AgentVerification;
+  greeting: string;
+  disclaimer?: string;
+  image?: string;
+  featured?: boolean;
+}

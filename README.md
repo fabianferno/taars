@@ -1,5 +1,7 @@
 # taars
 
+![taars banner](./web/public/banner.png)
+
 > **Your AI Replica. Your Identity. Your Rules.**
 >
 > Creator-owned AI replicas — INFT (ERC-7857) on **0G Chain**, identity via **ENS** subnames, per-minute USDC billing settled with guaranteed onchain execution by **KeeperHub**.
@@ -26,40 +28,7 @@ Anyone can mint an AI replica of themselves: voice samples, personality question
 
 ## Architecture
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                taars web app (Next.js PWA, Privy embedded wallet)  │
-└────────────────────────────────────────────────────────────────────┘
-        │ mint                                  │ chat / deploy
-        ▼                                       ▼
-┌───────────────────────┐           ┌───────────────────────────────┐
-│ Hono server (server/) │ ───────►  │ x402 paywall + session store  │
-└───────────────────────┘           └───────────────────────────────┘
-   │        │        │                          │
-   │        │        ▼                          ▼
-   │        │   ┌─────────────────┐     ┌────────────────────────────┐
-   │        │   │ OpenVoice (TEE) │     │ KeeperHub workflows (×3)   │
-   │        │   │ voice cloning   │     │ - billingSettle (verify)   │
-   │        │   └─────────────────┘     │ - inftTransfer (attest)    │
-   │        │                           │ - discordDeploy (lifecyle) │
-   │        ▼                           └────────────────────────────┘
-   │   ┌────────────────┐
-   │   │ 0G Storage     │  encrypted soul / skills / voice → merkle roots
-   │   └────────────────┘
-   ▼
-┌──────────────────────┐         ┌──────────────────────────────────┐
-│ TaarsAgentNFT (0G)   │         │ ENS NameWrapper + Resolver       │
-│ ERC-7857 INFT        │         │ Sepolia · taars.eth subnames     │
-│ IntelligentData[]    │         │ 11 text records / replica        │
-└──────────────────────┘         └──────────────────────────────────┘
-                                          │
-                                          ▼
-                                  ┌──────────────────┐
-                                  │ TaarsBilling     │
-                                  │ Sepolia + USDC   │
-                                  │ 90 / 7 / 3 split │
-                                  └──────────────────┘
-```
+![taars flow diagram](./web/public/flowdiagram.png)
 
 ---
 

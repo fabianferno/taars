@@ -34,6 +34,12 @@ export default function Navbar() {
             Explore
           </Link>
           <Link
+            href="/create"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+          >
+            Create
+          </Link>
+          <Link
             href="/earnings"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
           >

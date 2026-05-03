@@ -184,23 +184,18 @@ async function settleOnce(
 
   // Make settle resilient: if startSession was never recorded (e.g. an older
   // deploy that only minted a sessionId locally), open it now so the oracle
-  // can settle. Cheap on-chain read; only writes when missing.
-  try {
-    const existing = (await publicClient.readContract({
-      address: env.TAARS_BILLING_ADDRESS as Address,
-      abi: billingAbi,
-      functionName: 'getSession',
-      args: [sessionId],
-    })) as { caller: Address };
-    if (!existing.caller || existing.caller === '0x0000000000000000000000000000000000000000') {
-      await startSessionOnChain(sessionId, tokenId);
-    }
-  } catch (e) {
-    await appendAudit({
-      event: 'settle.precheck_failed',
-      sessionId,
-      error: (e as Error).message?.slice(0, 200),
-    });
+  // can settle. If we can't open it, abort — settle would revert with
+  // "unknown session" anyway, and a guaranteed-revert tx burns gas + pollutes
+  // the audit log.
+  const existing = (await publicClient.readContract({
+    address: env.TAARS_BILLING_ADDRESS as Address,
+    abi: billingAbi,
+    functionName: 'getSession',
+    args: [sessionId],
+  })) as { caller: Address };
+  if (!existing.caller || existing.caller === '0x0000000000000000000000000000000000000000') {
+    await appendAudit({ event: 'settle.precheck.opening', sessionId });
+    await startSessionOnChain(sessionId, tokenId); // throws if it fails
   }
 
   const txHash: Hash = await walletClient.writeContract({

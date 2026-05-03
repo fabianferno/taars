@@ -2,32 +2,24 @@
 
 ---
 
-## 0G — $15,000 Total
+## 📌 Submission evidence (taars)
 
-> **About:** Intelligent Layer 1 for onchain AI with decentralized AI OS (dAIOS). Core components: 0G Storage, 0G DA, 0G Compute Network, and 0G Chain (EVM-compatible).
-
-### 🛠️ Best Agent Framework, Tooling & Core Extensions — $7,500
-| Place | Prize |
-|-------|-------|
-| 🥇 1st | $2,500 |
-| 🥈 2nd | $2,000 |
-| 🥉 3rd | $1,500 |
-| 🏅 4th | $1,000 |
-| 🏅 5th | $500 |
-
-Framework-level work only. Build core extensions, improvements, forks, or new open agent frameworks deployed on 0G.
-
-**Requirements:**
-- Project name + short description
-- Contract deployment addresses
-- Public GitHub repo (README + setup instructions)
-- Demo video & live demo link (under 3 mins)
-- Explain protocol features/SDKs used
-- Team names + contact info (Telegram & X)
-- At least one working example agent using your framework
-- Architecture diagram (optional but recommended)
+- **Live demo:** https://0g-taars.vercel.app/
+- **Sample replica:** https://0g-taars.vercel.app/skywalker
+- **0G INFT contract:** `0xD2063f53Fd1c1353113796B56c45a78A65731d52` ([0G Chainscan](https://chainscan-galileo.0g.ai/address/0xD2063f53Fd1c1353113796B56c45a78A65731d52))
+- **Sample minted INFT:** tokenId `9` ([mint tx](https://chainscan-galileo.0g.ai/tx/0x4b17c8f8068a081363d00b56d365a23b85842c2be3323891c7c47ab3f76dc73d))
+- **ENS subnames:** https://sepolia.app.ens.domains/taars.eth?tab=subnames
+- **Sepolia TaarsBilling:** `0xCE5860AA731439a80F39852b6296057313831870`
+- **KeeperHub workflow IDs:** `billingSettle 9ucfocpbig3urovmnq6v9` · `inftTransfer pgkehp9z83o3yeinkh8r2` · `discordDeploy 49amr3waaqxy9vlw4wznn`
+- **KeeperHub real executions:** `billingSettle: m0pqec123y9lkl5ynp3wx` · `inftTransfer: glbkpo2a4nhq679b6a4yp` · `discordDeploy: ua32kdqse1nlqkiikzfot` (fully green ✅)
+- **Team contact:** Telegram & X — `@fabianferno`
 
 ---
+
+## 0G 
+
+> **About:** Intelligent Layer 1 for onchain AI with decentralized AI OS (dAIOS). Core components: 0G Storage, 0G DA, 0G Compute Network, and 0G Chain (EVM-compatible).
+ 
 
 ### 🤖 Best Autonomous Agents, Swarms & iNFT Innovations — $7,500
 Up to 5 teams × $1,500

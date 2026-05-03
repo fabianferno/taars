@@ -58,13 +58,23 @@ chat.post('/start', async (c) => {
       ensLabel: parsed.data.ensLabel,
       callerAddress: parsed.data.callerAddress,
     });
-    // Open the billing session on chain so /chat/end can settle it. Failure
-    // here shouldn't block chat; settleSessionOnChain will retry the open.
+    // Open the billing session on chain so /chat/end can settle it. If
+    // TAARS_BILLING_ADDRESS is set we treat this as required — otherwise
+    // settle will revert with "unknown session" later. If unset, the helper
+    // returns a `{skipped}` marker and we proceed with a free-tier session.
     try {
       await startSessionOnChain(session.sessionId, session.tokenId);
     } catch (e) {
-      console.warn(
+      console.error(
         `[chat/start] startSessionOnChain failed for ${session.sessionId}: ${(e as Error).message?.slice(0, 200)}`
+      );
+      return c.json(
+        {
+          ok: false,
+          error: 'billing_unavailable',
+          detail: (e as Error).message?.slice(0, 200),
+        },
+        503
       );
     }
     return c.json({

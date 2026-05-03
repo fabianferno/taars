@@ -67,8 +67,10 @@ export async function fireKeeperhubWorkflow(
       error: 'KEEPERHUB_WEBHOOK_BASE not set; logging workflow id only',
     };
   }
-  // KeeperHub webhook URLs are org/workflow scoped. We accept either a base
-  // that already contains `{id}` as a placeholder or appends the id to the path.
+  // KeeperHub webhook URLs are org/workflow scoped. Verified shape:
+  //   https://app.keeperhub.com/api/workflows/{id}/webhook
+  // We accept either a base that already contains `{id}` as a placeholder
+  // or appends the id to the path.
   const url = base.includes('{id}')
     ? base.replace('{id}', workflowId)
     : `${base.replace(/\/$/, '')}/${workflowId}`;

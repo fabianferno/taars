@@ -11,6 +11,7 @@ import TopNav from '@/components/TopNav';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
 import { PersonalityForm, emptyPersonality } from '@/components/PersonalityForm';
 import { StepProgress, type StepState } from '@/components/Create/StepProgress';
+import { ForgeBlob } from '@/components/Create/ForgeBlob';
 import {
   mintReplicaStream,
   blobToBase64,
@@ -165,8 +166,17 @@ export default function CreatePage() {
 
   const wizardIndex = WIZARD_ORDER.indexOf(step as Exclude<WizardStep, 'minting' | 'done'>);
 
+  // Drives the right-side blob: starts unformed, evolves toward a stable shape as
+  // each step completes. minting/done lock to fully formed.
+  const blobProgress = (() => {
+    if (step === 'done') return 1;
+    if (step === 'minting') return 0.95;
+    // wizardIndex 0..3 → 0.05..0.85 (still room to settle on the final reveal).
+    return Math.min(0.85, 0.05 + wizardIndex * 0.27);
+  })();
+
   return (
-    <PageShell>
+    <PageShell blob={<ForgeBlob progress={blobProgress} />}>
       {step !== 'minting' && step !== 'done' && (
         <header className="mb-8">
           <Link
@@ -477,12 +487,29 @@ export default function CreatePage() {
 // Layout primitives
 // ---------------------------------------------------------------------------
 
-function PageShell({ children }: { children: React.ReactNode }) {
+function PageShell({
+  children,
+  blob,
+}: {
+  children: React.ReactNode;
+  blob?: React.ReactNode;
+}) {
   return (
     <>
       <TopNav />
       <main className="min-h-screen bg-background pt-24 pb-20">
-        <div className="mx-auto max-w-2xl px-6">{children}</div>
+        {blob ? (
+          <div className="mx-auto grid max-w-7xl gap-10 px-6 lg:grid-cols-[minmax(0,1fr)_460px]">
+            <div className="min-w-0">{children}</div>
+            <aside className="hidden lg:block">
+              <div className="sticky top-28 h-[640px] overflow-hidden rounded-3xl border border-surface-dark/60 bg-gradient-to-b from-surface to-white shadow-sm">
+                {blob}
+              </div>
+            </aside>
+          </div>
+        ) : (
+          <div className="mx-auto max-w-2xl px-6">{children}</div>
+        )}
       </main>
     </>
   );

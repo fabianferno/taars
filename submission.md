@@ -81,18 +81,17 @@ Claude Code (Opus 4.7) was used pair-programming-style across the stack: scaffol
 - Mint tx (tokenId 9): https://chainscan-galileo.0g.ai/tx/0x4b17c8f8068a081363d00b56d365a23b85842c2be3323891c7c47ab3f76dc73d
 - INFT contract on 0G Chainscan: https://chainscan-galileo.0g.ai/address/0xD2063f53Fd1c1353113796B56c45a78A65731d52
 
-### 🌳 ENS — Best ENS Integration for AI Agents
+### 🌳 ENS — Best ENS Integration for AI Agents & 🌳 ENS — Most Creative Use of ENS
 **Why:** ENS is the agent's identity, not a label. The subname *is* the replica — owning `<label>.taars.eth` is owning the INFT, and the chat/discovery pipeline reads agents directly from ENS resolver text records (no private DB).
+
+
+**Why:** Eleven structured text records form a machine-readable **agent manifest** (`taars.inft`, `taars.storage`, `taars.voice`, `taars.price`, `taars.currency`, `taars.network`, `taars.owner`, `taars.created`, `taars.version`, plus `description` / `url` / `avatar`) all written in a single `PublicResolver.multicall`. The x402 paywall amount and the encrypted soul's storage root are both pulled live from ENS — text records are load-bearing infra, not decoration.
+
 
 **Code permalinks:**
 - ENS service (commit-reveal, NameWrapper, multicall, transfer) — `server/src/services/ens.ts`: https://github.com/fabianferno/taars/blob/main/server/src/services/ens.ts
 - Chat pipeline reads `taars.storage` + `taars.price` from ENS — `server/src/routes/chat.ts`: https://github.com/fabianferno/taars/blob/main/server/src/routes/chat.ts
 - Sample subname: https://sepolia.app.ens.domains/skywalker.taars.eth
-
-### 🌳 ENS — Most Creative Use of ENS
-**Why:** Eleven structured text records form a machine-readable **agent manifest** (`taars.inft`, `taars.storage`, `taars.voice`, `taars.price`, `taars.currency`, `taars.network`, `taars.owner`, `taars.created`, `taars.version`, plus `description` / `url` / `avatar`) all written in a single `PublicResolver.multicall`. The x402 paywall amount and the encrypted soul's storage root are both pulled live from ENS — text records are load-bearing infra, not decoration.
-
-**Code permalinks:**
 - 11-record multicall + operator transfer: https://github.com/fabianferno/taars/blob/main/server/src/services/ens.ts
 - Agent discovery from ENS only — `web/` explore/[ensName] pages: https://github.com/fabianferno/taars/tree/main/web/src/app
 

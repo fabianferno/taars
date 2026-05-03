@@ -1,0 +1,47 @@
+{
+  "ensLabel": "elisheba",
+  "ownerAddress": "0x878a8aeFe0e9761fe7650143B2C9594430Cbf6b7",
+  "createdAt": 1777797100542,
+  "updatedAt": 1777797181348,
+  "voice": {
+    "voiceId": "elisheba",
+    "provider": "openvoice",
+    "sampleRate": 22050
+  },
+  "storage": {
+    "intelligentData": [
+      {
+        "dataDescription": "soul.md",
+        "dataHash": "0x6f33d058c45128d01b1d60c1502ba7504ad7bedfdc92618c590712f19f644fbb",
+        "storageRoot": "0x6f33d058c45128d01b1d60c1502ba7504ad7bedfdc92618c590712f19f644fbb"
+      },
+      {
+        "dataDescription": "skills.json",
+        "dataHash": "0x8b6760bf8ecf9ef8989facbf83d0fb2cb31db7069ae298de0138f5aba024ef8a",
+        "storageRoot": "0x8b6760bf8ecf9ef8989facbf83d0fb2cb31db7069ae298de0138f5aba024ef8a"
+      },
+      {
+        "dataDescription": "voice.json",
+        "dataHash": "0x94cbe7df8c4a06d5d7a6e3033ea3643d0a6f3881cd54901ba723f2427e6c8793",
+        "storageRoot": "0x94cbe7df8c4a06d5d7a6e3033ea3643d0a6f3881cd54901ba723f2427e6c8793"
+      }
+    ],
+    "storageRoot": "0x6f33d058c45128d01b1d60c1502ba7504ad7bedfdc92618c590712f19f644fbb"
+  },
+  "inft": {
+    "tokenId": "8",
+    "txHash": "0x7d9482760b147db03e6863a5946ae305985d840da2146f6c5d533d9417f46457"
+  },
+  "ensSubname": {
+    "txHash": "0x3775fee0888825994a49fde5c742830cb2f8a9b99fbb768a6738687da8fa7ee1"
+  },
+  "ensRecords": {
+    "txHash": "0x9ac8735fc51a8595e72a0585af09f0b7027675951e01b74dffe6830cb01d3c87",
+    "recordCount": 11
+  },
+  "ensTransfer": {
+    "txHash": "0xf38cb2c6278e43202dfdca933ff55e8d6056c1348850ff728c50822373d35e74",
+    "alreadyOwned": false
+  },
+  "completed": true
+}

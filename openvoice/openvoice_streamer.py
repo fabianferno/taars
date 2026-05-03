@@ -89,10 +89,18 @@ class OpenVoiceStreamer:
     def _load_voice(self, voice_id: str) -> torch.Tensor:
         if voice_id in self._se_cache:
             return self._se_cache[voice_id]
-        se_path = os.path.join(_VOICES_DIR, f"{voice_id}.pth")
-        if not os.path.isfile(se_path):
-            raise FileNotFoundError(f"No embedding for voice '{voice_id}' at {se_path}")
-        se = torch.load(se_path, map_location=self.device)
+        pth_path = os.path.join(_VOICES_DIR, f"{voice_id}.pth")
+        npy_path = os.path.join(_VOICES_DIR, f"{voice_id}.npy")
+        if os.path.isfile(pth_path):
+            se = torch.load(pth_path, map_location=self.device)
+        elif os.path.isfile(npy_path):
+            import numpy as np
+            arr = np.load(npy_path)
+            se = torch.from_numpy(arr).to(self.device)
+        else:
+            raise FileNotFoundError(
+                f"No embedding for voice '{voice_id}' at {pth_path} or {npy_path}"
+            )
         self._se_cache[voice_id] = se
         return se
 

@@ -16,12 +16,12 @@ export function EndSessionDialog({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-surface-dark/60 bg-white p-6 shadow-2xl">
         <h2 className="font-coolvetica text-2xl text-foreground">Session settled</h2>
-        <p className="mt-1 text-sm text-neutral-400">
+        <p className="mt-1 text-sm text-muted-foreground">
           Receipt for session{' '}
-          <span className="font-mono text-neutral-300">
+          <span className="font-mono text-foreground">
             {receipt.sessionId.slice(0, 10)}…
           </span>
         </p>
@@ -38,7 +38,7 @@ export function EndSessionDialog({
             href={`https://sepolia.etherscan.io/tx/${receipt.txHash}`}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 block break-all rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 font-mono text-xs text-neutral-300 underline-offset-2 hover:underline"
+            className="mt-4 block break-all rounded-xl border border-surface-dark/60 bg-surface/40 p-3 font-mono text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
             tx: {receipt.txHash}
           </a>
@@ -57,9 +57,9 @@ export function EndSessionDialog({
 
 function Cell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-      <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-1 font-mono text-sm text-neutral-100">{value}</div>
+    <div className="rounded-xl border border-surface-dark/60 bg-surface/40 p-3">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 font-mono text-sm text-foreground">{value}</div>
     </div>
   );
 }

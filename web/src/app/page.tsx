@@ -1,4 +1,5 @@
 import CTASection from "@/components/Landing/CTASection";
+import DigitalTwinSection from "@/components/Landing/DigitalTwinSection";
 import FeaturedTaars from "@/components/Landing/FeaturedTaars";
 import Features from "@/components/Landing/Features";
 import Footer from "@/components/Landing/Footer";
@@ -13,6 +14,7 @@ export default function Home() {
       <Navbar />
       <main>
         <Hero />
+        <DigitalTwinSection />
         <FeaturedTaars />
         <HowItWorks />
         <Features />

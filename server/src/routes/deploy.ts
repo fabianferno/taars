@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { env } from '../env.js';
 import { readAllTexts } from '../services/ens.js';
 import { settleSessionOnChain } from '../services/billing.js';
+import { fireKeeperhubWorkflow, KH_WORKFLOWS } from '../services/keeperhub.js';
 
 // ----- types -----
 
@@ -23,7 +24,6 @@ interface DiscordDeploy {
   startedAt: number; // unix seconds
   endedAt?: number;
   status: DeployStatus;
-  stub: boolean;
   sessionId: `0x${string}`; // for billing parity with /chat sessions
 }
 
@@ -104,6 +104,32 @@ function expectedUsd(ratePerMinUsd: string, durationSeconds: number): string {
 // ----- route -----
 
 export const deploy = new Hono();
+
+deploy.get('/health', async (c) => {
+  // Probe the bot's /health. Fails fast (1.5s) so the UI badge stays snappy.
+  const url = `${env.DISCORD_BOT_URL}/health`;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 1500);
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
+    let bot: any = null;
+    try {
+      bot = await res.json();
+    } catch {
+      // ignore
+    }
+    return c.json({
+      ok: res.ok && Boolean(bot?.discordReady),
+      bot: bot ?? { discordReady: false, error: `bot returned ${res.status}` },
+    });
+  } catch (e) {
+    return c.json({
+      ok: false,
+      bot: { discordReady: false, error: (e as Error).message },
+    });
+  }
+});
 
 const startSchema = z.object({
   ensLabel: z.string().regex(/^[a-z0-9-]{2,32}$/),
@@ -190,7 +216,6 @@ deploy.post('/discord', async (c) => {
     );
   }
 
-  const stub = Boolean(botResp.data?.stub);
   const record: DiscordDeploy = {
     deployId,
     ensLabel: parsed.data.ensLabel,
@@ -202,17 +227,29 @@ deploy.post('/discord', async (c) => {
     ratePerMinUsd,
     startedAt: Math.floor(Date.now() / 1000),
     status: 'active',
-    stub,
     sessionId,
   };
   deploys.set(deployId, record);
+
+  // Fire KeeperHub Discord deploy lifecycle workflow (start event).
+  const khStart = await fireKeeperhubWorkflow('discordDeploy', {
+    event: 'start',
+    deployId,
+    ensFullName,
+    sessionId,
+    guildId: parsed.data.guildId,
+    channelId: parsed.data.channelId,
+    voiceId,
+    ratePerMinUsd,
+    ownerAddress: parsed.data.ownerAddress,
+  });
 
   await appendAudit({
     event: 'deploy.active',
     deployId,
     txAuditId,
-    stub,
     botGreetingMs: botResp.data?.greetingMs ?? null,
+    keeperhub: khStart,
   });
 
   return c.json({
@@ -220,7 +257,6 @@ deploy.post('/discord', async (c) => {
     deployId,
     txAuditId,
     status: 'active' as DeployStatus,
-    stub,
     ensLabel: record.ensLabel,
     ensFullName: record.ensFullName,
     voiceId: record.voiceId,
@@ -267,7 +303,7 @@ deploy.post('/discord/speak', async (c) => {
   return c.json({
     ok: true,
     durationMs: botResp.data?.durationMs ?? 0,
-    stub: record.stub,
+    voiceUsed: botResp.data?.voiceUsed ?? record.voiceId,
   });
 });
 
@@ -317,7 +353,9 @@ deploy.post('/discord/end', async (c) => {
       record.sessionId,
       record.endedAt,
       record.ratePerMinUsd,
-      deployedSeconds
+      deployedSeconds,
+      '0',
+      record.ensFullName
     );
     if ('skipped' in r && r.skipped) {
       settlement = { settled: false, reason: r.reason };
@@ -332,11 +370,27 @@ deploy.post('/discord/end', async (c) => {
     settlement = { settled: false, reason: (e as Error).message };
   }
 
+  // Fire KeeperHub Discord deploy lifecycle workflow (end event).
+  const khEnd = await fireKeeperhubWorkflow('discordDeploy', {
+    event: 'end',
+    deployId: record.deployId,
+    ensFullName: record.ensFullName,
+    sessionId: record.sessionId,
+    guildId: record.guildId,
+    channelId: record.channelId,
+    voiceId: record.voiceId,
+    ratePerMinUsd: record.ratePerMinUsd,
+    ownerAddress: record.ownerAddress,
+    deployedSeconds,
+    expectedUsd: expected,
+  });
+
   await appendAudit({
     event: 'deploy.settle',
     deployId: record.deployId,
     sessionId: record.sessionId,
     settlement,
+    keeperhub: khEnd,
   });
 
   return c.json({
@@ -346,7 +400,6 @@ deploy.post('/discord/end', async (c) => {
     ratePerMinUsd: record.ratePerMinUsd,
     expectedUsd: expected,
     settlement,
-    stub: record.stub,
   });
 });
 
@@ -360,7 +413,6 @@ deploy.get('/:deployId', (c) => {
     ok: true,
     deployId: record.deployId,
     status: record.status,
-    stub: record.stub,
     ensLabel: record.ensLabel,
     ensFullName: record.ensFullName,
     guildId: record.guildId,

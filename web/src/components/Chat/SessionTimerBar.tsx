@@ -28,20 +28,20 @@ export function SessionTimerBar({
   const cost = elapsedMin * rate;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-xs text-neutral-300">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-surface-dark/60 bg-surface/40 px-3 py-2 text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1.5">
         <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
         live
       </span>
-      <span className="font-mono text-sm text-neutral-100">{fmt(elapsedMs)}</span>
-      <span className="text-neutral-500">·</span>
+      <span className="font-mono text-sm text-foreground">{fmt(elapsedMs)}</span>
+      <span className="text-muted-foreground/50">·</span>
       <span>
-        rate <span className="font-mono text-neutral-100">${ratePerMinUsd}</span>/min
+        rate <span className="font-mono text-foreground">${ratePerMinUsd}</span>/min
       </span>
-      <span className="text-neutral-500">·</span>
+      <span className="text-muted-foreground/50">·</span>
       <span>
         running cost{' '}
-        <span className="font-mono text-neutral-100">${cost.toFixed(4)}</span>
+        <span className="font-mono text-foreground">${cost.toFixed(4)}</span>
       </span>
     </div>
   );

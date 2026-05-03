@@ -14,6 +14,7 @@ import { StepProgress, type StepState } from '@/components/Create/StepProgress';
 import {
   mintReplicaStream,
   blobToBase64,
+  clearMintCheckpoint,
   type MintStepKey,
   type MintStreamEvent,
 } from '@/lib/api';
@@ -40,7 +41,15 @@ const blankStates = (): Record<MintStepKey, StepState> => ({
   inft: 'pending',
   'ens.subname': 'pending',
   'ens.records': 'pending',
+  'ens.transfer': 'pending',
 });
+
+/** Passage for voice enrollment: natural prose plus varied sounds for a clearer clone. */
+const VOICE_SAMPLE_PROMPT =
+  'Hello — this is my taar voice sample. I’m speaking clearly and at my normal pace. ' +
+  'The evening breeze rustled through tall oak trees near the riverbank. ' +
+  'Pack my box with five dozen quality liquor jugs. ' +
+  'Thanks for listening; that should be enough for my replica.';
 
 export default function CreatePage() {
   const router = useRouter();
@@ -92,7 +101,7 @@ export default function CreatePage() {
     );
   }
 
-  async function forge() {
+  async function forge(opts?: { fresh?: boolean }) {
     if (!wallet || !voiceBlob) return;
     setStep('minting');
     setError(null);
@@ -106,6 +115,13 @@ export default function CreatePage() {
     }, 1000);
 
     try {
+      if (opts?.fresh) {
+        try {
+          await clearMintCheckpoint(wallet.address as `0x${string}`, ensLabel);
+        } catch {
+          // best-effort — server will clear on the next call too
+        }
+      }
       const voiceSampleBase64 = await blobToBase64(voiceBlob);
       const res = await mintReplicaStream(
         {
@@ -129,7 +145,9 @@ export default function CreatePage() {
             );
             setError(evt.error);
           }
-        }
+        },
+        undefined,
+        { fresh: opts?.fresh }
       );
       setResult(res);
       setStep('done');
@@ -225,15 +243,17 @@ export default function CreatePage() {
         <Card>
           <Label>Record a voice sample</Label>
           <Help>
-            Up to 60s of natural speech. Voice character matters more than what you say. The clone
-            is processed locally via OpenVoice (production target: TEE-backed 0G Compute).
+            Up to 60s of natural speech. When you start recording, read the passage shown — it
+            helps capture a consistent sample. The clone is processed locally via OpenVoice
+            (production target: TEE-backed 0G Compute).
           </Help>
           <div className="mt-4">
             <VoiceRecorder
-                onComplete={setVoiceBlob}
-                mode={voiceMode}
-                onModeChange={setVoiceMode}
-              />
+              onComplete={setVoiceBlob}
+              mode={voiceMode}
+              onModeChange={setVoiceMode}
+              samplePrompt={VOICE_SAMPLE_PROMPT}
+            />
           </div>
           <NextRow>
             <SecondaryBtn onClick={() => setStep('name')}>Back</SecondaryBtn>
@@ -296,7 +316,7 @@ export default function CreatePage() {
           <NextRow>
             <SecondaryBtn onClick={() => setStep('personality')}>Back</SecondaryBtn>
             <button
-              onClick={forge}
+              onClick={() => forge()}
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-accent to-accent-dark px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/20 transition hover:opacity-90"
             >
               Forge My taar
@@ -313,7 +333,7 @@ export default function CreatePage() {
               Forging <span className="text-accent">{ensLabel}.taars.eth</span>
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Six on-chain steps. Track them live below. Total runtime is usually 60-180s,
+              Seven on-chain steps. Track them live below. Total runtime is usually 60-200s,
               dominated by 0G Storage and Sepolia tx confirmations.
             </p>
           </header>
@@ -338,17 +358,35 @@ export default function CreatePage() {
           {error && (
             <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
               <p className="font-medium text-destructive">{error}</p>
-              <button
-                onClick={() => {
-                  setError(null);
-                  setStep('price');
-                  setStartedAt(null);
-                  setElapsedSec(0);
-                }}
-                className="mt-2 text-xs underline hover:text-destructive"
-              >
-                Back to pricing
-              </button>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Failed at <span className="font-mono">{errorStep ?? 'unknown'}</span>. Steps that
+                already succeeded are checkpointed — resume picks up from the failed step.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => forge()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-xs font-medium text-white transition hover:bg-accent-light"
+                >
+                  Resume from {errorStep ?? 'last step'}
+                </button>
+                <button
+                  onClick={() => forge({ fresh: true })}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-surface-dark/70 bg-white px-4 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface"
+                >
+                  Start fresh
+                </button>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setStep('price');
+                    setStartedAt(null);
+                    setElapsedSec(0);
+                  }}
+                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                >
+                  Back to pricing
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -402,11 +440,25 @@ export default function CreatePage() {
                 value={result.txInft}
                 href={`https://chainscan-galileo.0g.ai/tx/${result.txInft}`}
               />
+              {result.txEnsSubname && (
+                <Receipt
+                  name="ENS subname tx"
+                  value={result.txEnsSubname}
+                  href={`https://sepolia.etherscan.io/tx/${result.txEnsSubname}`}
+                />
+              )}
               {result.txEnsTextRecords[0] && (
                 <Receipt
                   name="ENS records tx"
                   value={result.txEnsTextRecords[0]}
                   href={`https://sepolia.etherscan.io/tx/${result.txEnsTextRecords[0]}`}
+                />
+              )}
+              {result.txEnsTextRecords[1] && (
+                <Receipt
+                  name="ENS transfer tx"
+                  value={result.txEnsTextRecords[1]}
+                  href={`https://sepolia.etherscan.io/tx/${result.txEnsTextRecords[1]}`}
                 />
               )}
             </ul>

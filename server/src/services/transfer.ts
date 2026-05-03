@@ -15,6 +15,7 @@ import { encryptBlob, blobToBytes } from './encrypt.js';
 import { fetchAndDecrypt } from './decrypt.js';
 import { setText, readText } from './ens.js';
 import { env } from '../env.js';
+import { fireKeeperhubWorkflow, KH_WORKFLOWS } from './keeperhub.js';
 
 /**
  * INFT transfer orchestration. Multi-step ERC-7857 flow with retry + audit.
@@ -251,6 +252,18 @@ export async function orchestrateTransfer(req: TransferRequest): Promise<Transfe
       setText(fullName, 'taars.storage', newStorageRoot!)
     );
 
+    // Fire KeeperHub INFT transfer verifier workflow. Reads ownerOf on 0G to
+    // attest the new owner is set; closes the multi-step ERC-7857 flow with a
+    // KeeperHub-guaranteed audit step.
+    const kh = await fireKeeperhubWorkflow('inftTransfer', {
+      tokenId: tokenId.toString(),
+      newOwner,
+      txHash: txTransfer,
+      newStorageRoot,
+      ensLabel,
+    });
+    log.push({ step: 'keeperhub.fire', ok: kh.ok, detail: kh, ts: Date.now() });
+
     appendAudit('transfers.jsonl', {
       auditId,
       ts: Date.now(),
@@ -261,6 +274,7 @@ export async function orchestrateTransfer(req: TransferRequest): Promise<Transfe
       newStorageRoot,
       txTransfer,
       txEnsUpdate,
+      keeperhub: kh,
     });
 
     return {

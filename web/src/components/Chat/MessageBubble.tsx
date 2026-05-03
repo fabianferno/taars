@@ -38,7 +38,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
 
   if (message.role === 'system') {
     return (
-      <div className="my-2 text-center text-[11px] uppercase tracking-wide text-neutral-500">
+      <div className="my-2 text-center text-[11px] uppercase tracking-wide text-muted-foreground">
         {message.text}
       </div>
     );
@@ -52,16 +52,22 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
           isUser
             ? 'bg-accent text-white'
-            : 'border border-neutral-800 bg-neutral-900/70 text-neutral-100',
+            : 'border border-surface-dark/60 bg-white text-foreground shadow-sm',
         ].join(' ')}
       >
         <p className="whitespace-pre-wrap break-words">{message.text}</p>
+        {!isUser && message.provider === 'zerog' && (
+          <div className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Powered by 0G Compute
+          </div>
+        )}
         {!isUser && audioUrl && (
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
               onClick={toggle}
-              className="inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-950/40 px-2.5 py-1 text-[11px] text-neutral-200 transition hover:bg-neutral-800"
+              className="inline-flex items-center gap-1 rounded-full border border-surface-dark/70 bg-surface/60 px-2.5 py-1 text-[11px] text-foreground transition hover:bg-surface"
             >
               {playing ? <Pause size={12} /> : <Play size={12} />}
               {playing ? 'Pause' : 'Play audio'}

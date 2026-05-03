@@ -27,6 +27,13 @@ const REGISTRY_ABI = [
     inputs: [{ name: 'node', type: 'bytes32' }],
     outputs: [{ name: '', type: 'address' }],
   },
+  {
+    name: 'resolver',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'node', type: 'bytes32' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
 ] as const;
 
 const client = createPublicClient({
@@ -47,30 +54,62 @@ export async function resolveTaarsLabel(label: string): Promise<ReplicaProfile |
   const fullName = `${label}.${PARENT}`;
   const node = namehash(normalize(fullName));
 
-  const owner = (await client.readContract({
-    address: ENS_REGISTRY,
-    abi: REGISTRY_ABI,
-    functionName: 'owner',
-    args: [node],
-  })) as `0x${string}`;
+  const [owner, resolverFromRegistry] = await Promise.all([
+    client.readContract({
+      address: ENS_REGISTRY,
+      abi: REGISTRY_ABI,
+      functionName: 'owner',
+      args: [node],
+    }) as Promise<`0x${string}`>,
+    client.readContract({
+      address: ENS_REGISTRY,
+      abi: REGISTRY_ABI,
+      functionName: 'resolver',
+      args: [node],
+    }) as Promise<`0x${string}`>,
+  ]);
 
   if (owner === '0x0000000000000000000000000000000000000000') return null;
 
+  // Prefer the resolver the registry has configured for this node — wrapped
+  // subnames sometimes point at a different resolver than the parent's
+  // PublicResolver. Fall back to the well-known PublicResolver if unset.
+  const resolverAddress: `0x${string}` =
+    resolverFromRegistry &&
+    resolverFromRegistry !== '0x0000000000000000000000000000000000000000'
+      ? resolverFromRegistry
+      : PUBLIC_RESOLVER;
+
   const entries = await Promise.all(
     TAARS_TEXT_KEYS.map(async (key) => {
-      const v = (await client.readContract({
-        address: PUBLIC_RESOLVER,
-        abi: RESOLVER_ABI,
-        functionName: 'text',
-        args: [node, key],
-      })) as string;
-      return [key, v] as const;
+      try {
+        const v = (await client.readContract({
+          address: resolverAddress,
+          abi: RESOLVER_ABI,
+          functionName: 'text',
+          args: [node, key],
+        })) as string;
+        return [key, v] as const;
+      } catch {
+        return [key, ''] as const;
+      }
     })
   );
 
   const records: ReplicaProfile['records'] = {};
   for (const [k, v] of entries) {
     if (v) records[k] = v;
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    // Helpful in the demo console when records come back blank.
+    // eslint-disable-next-line no-console
+    console.debug('[ens.resolve]', {
+      fullName,
+      owner,
+      resolver: resolverAddress,
+      recordCount: Object.keys(records).length,
+    });
   }
 
   return { ensFullName: fullName, ensLabel: label, owner, records };

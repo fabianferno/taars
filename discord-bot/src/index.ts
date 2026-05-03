@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import { Readable } from 'node:stream';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { env, HAS_DISCORD_TOKEN } from './env.js';
+import { env } from './env.js';
 
 // ----- types -----
 
@@ -16,94 +16,106 @@ interface DeployState {
   ensLabel: string;
   startedAt: number;
   // Lazy types: connection, audioPlayer come from @discordjs/voice when present.
-  connection?: any;
+  connection: any;
   audioPlayer?: any;
-  stub: boolean;
 }
 
 const deploys = new Map<string, DeployState>(); // keyed by guildId
 
-// ----- discord state (lazy) -----
+// ----- discord state -----
 
 let discordReady = false;
 let discordClient: any = null;
 let voiceMod: any = null;
 
 async function initDiscord(): Promise<void> {
-  if (!HAS_DISCORD_TOKEN) {
-    console.log(
-      '[discord-bot] DISCORD_BOT_TOKEN missing - start in stub mode (HTTP endpoints respond 200 with a simulated deploy)'
-    );
-    return;
-  }
-  try {
-    const djs: any = await import('discord.js');
-    voiceMod = await import('@discordjs/voice');
-    const { Client, GatewayIntentBits } = djs;
-    discordClient = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
-    });
+  const djs: any = await import('discord.js');
+  voiceMod = await import('@discordjs/voice');
+  const { Client, GatewayIntentBits } = djs;
+  discordClient = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+  });
+  await new Promise<void>((resolve, reject) => {
     discordClient.once('ready', () => {
       console.log(`[discord-bot] logged in as ${discordClient.user?.tag}`);
       discordReady = true;
+      resolve();
     });
-    await discordClient.login(env.DISCORD_BOT_TOKEN);
-  } catch (e) {
-    console.warn(
-      '[discord-bot] failed to init Discord client:',
-      (e as Error).message,
-      '- falling back to stub mode'
-    );
-    discordReady = false;
-    discordClient = null;
-    voiceMod = null;
+    discordClient.once('error', reject);
+    discordClient.login(env.DISCORD_BOT_TOKEN).catch(reject);
+  });
+}
+
+function requireReady(): void {
+  if (!discordReady || !discordClient || !voiceMod) {
+    const err: any = new Error('discord client not ready');
+    err.status = 503;
+    throw err;
   }
 }
 
 // ----- voice helpers -----
 
-async function synthesizeWav(voiceId: string, text: string): Promise<Buffer> {
+async function synthesizeOnce(voiceId: string, text: string): Promise<Buffer | { notFound: true }> {
   const res = await fetch(`${env.OPENVOICE_URL}/synthesize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ voice_id: voiceId, text, speed: 1.0 }),
   });
+  if (res.status === 404) return { notFound: true };
   if (!res.ok) {
     const body = await res.text();
+    // OpenVoice sometimes leaks FileNotFoundError as 500 instead of 404 when
+    // the streamer's loader and the pre-flight check disagree. Treat that
+    // shape as "not found" so the bot's fallback chain still kicks in.
+    if (res.status === 500 && /No embedding for voice|voice profile not found/i.test(body)) {
+      return { notFound: true };
+    }
     throw new Error(`OpenVoice /synthesize failed: ${res.status} ${body.slice(0, 200)}`);
   }
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function playInGuild(guildId: string, text: string): Promise<{ durationMs: number }> {
+/**
+ * Synthesize speech with intelligent voice fallback. Tries the requested
+ * voiceId first, then the ENS label (matches the OpenVoice seed naming for
+ * featured taars), then the configured DEFAULT_VOICE_FALLBACK. Throws only if
+ * every candidate is unknown / OpenVoice is unreachable.
+ */
+async function synthesizeWav(state: DeployState, text: string): Promise<{ wav: Buffer; voiceUsed: string }> {
+  const tried = new Set<string>();
+  const candidates = [state.voiceId, state.ensLabel, env.DEFAULT_VOICE_FALLBACK].filter(
+    (v): v is string => Boolean(v) && !tried.has(v) && tried.add(v) !== undefined
+  );
+  let lastNotFound: string | null = null;
+  for (const candidate of candidates) {
+    const out = await synthesizeOnce(candidate, text);
+    if (out instanceof Buffer) {
+      if (candidate !== state.voiceId) {
+        console.warn(
+          `[discord-bot] voice profile "${state.voiceId}" not found - falling back to "${candidate}"`
+        );
+        // Pin the fallback so subsequent /speak calls don't redo the lookup.
+        state.voiceId = candidate;
+      }
+      return { wav: out, voiceUsed: candidate };
+    }
+    lastNotFound = candidate;
+  }
+  throw new Error(
+    `OpenVoice has no profile for any of [${candidates.join(', ')}]. ` +
+      `Last 404: ${lastNotFound ?? 'unknown'}.`
+  );
+}
+
+async function playInGuild(guildId: string, text: string): Promise<{ durationMs: number; voiceUsed: string }> {
   const state = deploys.get(guildId);
   if (!state) throw new Error(`no active deploy for guild ${guildId}`);
+  requireReady();
 
   const start = Date.now();
-  let wav: Buffer;
-  try {
-    wav = await synthesizeWav(state.voiceId, text);
-  } catch (e) {
-    if (state.stub) {
-      console.warn(
-        `[discord-bot] (stub) synthesize failed: ${(e as Error).message} - simulating playback`
-      );
-      return { durationMs: Math.max(500, text.length * 60) };
-    }
-    throw e;
-  }
+  const { wav, voiceUsed } = await synthesizeWav(state, text);
 
-  if (state.stub || !state.connection || !voiceMod) {
-    // Stub: write to a tmp file so we can prove the bytes flowed, but skip actual VC playback.
-    const tmpPath = path.join(os.tmpdir(), `taars-stub-${randomBytes(6).toString('hex')}.wav`);
-    await fs.writeFile(tmpPath, wav);
-    console.log(
-      `[discord-bot] (stub) synthesized ${wav.length} bytes for guild=${guildId} -> ${tmpPath}`
-    );
-    return { durationMs: Date.now() - start };
-  }
-
-  // Real Discord playback path.
   const tmpPath = path.join(os.tmpdir(), `taars-${randomBytes(6).toString('hex')}.wav`);
   await fs.writeFile(tmpPath, wav);
   try {
@@ -130,44 +142,124 @@ async function playInGuild(guildId: string, text: string): Promise<{ durationMs:
   } finally {
     fs.unlink(tmpPath).catch(() => {});
   }
-  return { durationMs: Date.now() - start };
+  return { durationMs: Date.now() - start, voiceUsed };
 }
 
 async function joinVc(state: DeployState): Promise<void> {
-  if (state.stub || !discordReady || !discordClient || !voiceMod) {
-    console.log(
-      `[discord-bot] (stub) joinVc guild=${state.guildId} channel=${state.channelId} voice=${state.voiceId}`
-    );
-    return;
+  requireReady();
+  const guild = await discordClient.guilds.fetch(state.guildId).catch((e: Error) => {
+    const err: any = new Error(`fetch guild ${state.guildId} failed: ${e.message}`);
+    err.status = 404;
+    throw err;
+  });
+  // Pre-flight: confirm channel exists and is a joinable voice/stage channel.
+  const channel = await guild.channels.fetch(state.channelId).catch((e: Error) => {
+    const err: any = new Error(`fetch channel ${state.channelId} failed: ${e.message}`);
+    err.status = 404;
+    throw err;
+  });
+  if (!channel) {
+    const err: any = new Error(`channel ${state.channelId} not found in guild ${state.guildId}`);
+    err.status = 404;
+    throw err;
   }
-  const guild = await discordClient.guilds.fetch(state.guildId);
+  // GuildVoice = 2, GuildStageVoice = 13.
+  if (channel.type !== 2 && channel.type !== 13) {
+    const err: any = new Error(
+      `channel ${state.channelId} is type ${channel.type}, not a voice channel (expected 2 or 13).`
+    );
+    err.status = 400;
+    throw err;
+  }
+  const me = guild.members.me ?? (await guild.members.fetchMe().catch(() => null));
+  if (me && typeof channel.permissionsFor === 'function') {
+    const perms = channel.permissionsFor(me);
+    const missing: string[] = [];
+    // ViewChannel=1024, Connect=1048576, Speak=2097152.
+    if (!perms?.has(1024n)) missing.push('ViewChannel');
+    if (!perms?.has(1048576n)) missing.push('Connect');
+    if (!perms?.has(2097152n)) missing.push('Speak');
+    if (missing.length > 0) {
+      const err: any = new Error(
+        `bot is missing permissions on channel ${channel.name ?? state.channelId}: ${missing.join(', ')}`
+      );
+      err.status = 403;
+      throw err;
+    }
+  }
+
   const connection = voiceMod.joinVoiceChannel({
     channelId: state.channelId,
     guildId: state.guildId,
     adapterCreator: guild.voiceAdapterCreator,
     selfDeaf: false,
     selfMute: false,
+    debug: true,
+  });
+  connection.on('debug', (msg: string) => {
+    console.log(`[discord-bot] voice debug ${state.guildId}:`, msg);
+  });
+  connection.on('subscribe', () => {});
+  // Inner networking state (UDP discovery) is the most common failure point.
+  connection.on('stateChange', (_o: any, n: any) => {
+    if (n.networking) {
+      n.networking.on('debug', (msg: string) =>
+        console.log(`[discord-bot] networking debug ${state.guildId}:`, msg)
+      );
+      n.networking.on('error', (e: Error) =>
+        console.warn(`[discord-bot] networking error ${state.guildId}:`, e.message)
+      );
+      n.networking.on('stateChange', (oo: any, nn: any) =>
+        console.log(
+          `[discord-bot] networking ${state.guildId}: ${oo.code}->${nn.code}`
+        )
+      );
+    }
   });
   state.connection = connection;
   state.audioPlayer = voiceMod.createAudioPlayer();
   connection.subscribe(state.audioPlayer);
-  // Wait until ready (5s timeout fallback).
+
+  // Capture the real reason the connection fails — entersState only throws
+  // AbortError on timeout, which hides the underlying state transitions.
+  const transitions: string[] = [];
+  let lastError: Error | null = null as Error | null;
+  connection.on('stateChange', (oldS: any, newS: any) => {
+    const line = `${oldS.status}->${newS.status}${newS.reason ? `(${newS.reason})` : ''}`;
+    transitions.push(line);
+    console.log(`[discord-bot] voice ${state.guildId}: ${line}`);
+  });
+  connection.on('error', (e: Error) => {
+    lastError = e;
+    console.warn(`[discord-bot] voice error ${state.guildId}:`, e.message);
+  });
+
   try {
-    await voiceMod.entersState(connection, voiceMod.VoiceConnectionStatus.Ready, 10_000);
+    await voiceMod.entersState(connection, voiceMod.VoiceConnectionStatus.Ready, 15_000);
   } catch (e) {
-    console.warn('[discord-bot] voice connection did not reach Ready:', (e as Error).message);
+    try {
+      connection.destroy();
+    } catch {
+      // ignore
+    }
+    const err: any = new Error(
+      `voice connection did not reach Ready within 15s: ${(e as Error).message}. ` +
+        `Transitions: [${transitions.join(', ')}]. ` +
+        (lastError ? `Last connection error: ${lastError.message}. ` : '') +
+        `Channel type=${channel.type} name=${channel.name ?? '?'}. ` +
+        `If transitions stop at "signalling" the gateway never replied (bot may not actually be in the guild). ` +
+        `If they reach "connecting" but not "ready" it's usually a UDP/encryption issue (missing native voice deps).`
+    );
+    err.status = 502;
+    throw err;
   }
 }
 
 async function leaveVc(state: DeployState): Promise<number> {
   const seconds = Math.max(0, Math.round((Date.now() - state.startedAt) / 1000));
-  if (state.stub || !state.connection) {
-    console.log(`[discord-bot] (stub) leaveVc guild=${state.guildId} seconds=${seconds}`);
-    return seconds;
-  }
   try {
     state.audioPlayer?.stop();
-    state.connection.destroy();
+    state.connection?.destroy();
   } catch (e) {
     console.warn('[discord-bot] leaveVc error:', (e as Error).message);
   }
@@ -221,14 +313,19 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 
 async function handleDeploy(body: unknown) {
   const parsed = deployBodySchema.parse(body);
-  const stub = !discordReady;
+  requireReady();
+  if (deploys.has(parsed.guildId)) {
+    const err: any = new Error(`guild ${parsed.guildId} already has an active deploy`);
+    err.status = 409;
+    throw err;
+  }
   const state: DeployState = {
     guildId: parsed.guildId,
     channelId: parsed.channelId,
     voiceId: parsed.voiceId,
     ensLabel: parsed.ensLabel,
     startedAt: Date.now(),
-    stub,
+    connection: null,
   };
   await joinVc(state);
   deploys.set(parsed.guildId, state);
@@ -236,19 +333,22 @@ async function handleDeploy(body: unknown) {
   // Greeting.
   const greeting = `Hi, I'm ${parsed.ensLabel}'s taars replica. Ask me anything - every minute is metered on-chain.`;
   let greetingMs = 0;
+  let voiceUsed = state.voiceId;
   try {
     const r = await playInGuild(parsed.guildId, greeting);
     greetingMs = r.durationMs;
+    voiceUsed = r.voiceUsed;
   } catch (e) {
+    // Don't fail the deploy if the greeting can't synthesize - the connection
+    // is up, /speak will report errors clearly.
     console.warn('[discord-bot] greeting playback failed:', (e as Error).message);
   }
 
   return {
     ok: true,
-    stub,
     guildId: parsed.guildId,
     channelId: parsed.channelId,
-    voiceId: parsed.voiceId,
+    voiceId: voiceUsed,
     ensLabel: parsed.ensLabel,
     startedAt: state.startedAt,
     greetingMs,
@@ -257,6 +357,7 @@ async function handleDeploy(body: unknown) {
 
 async function handleSpeak(body: unknown) {
   const parsed = speakBodySchema.parse(body);
+  requireReady();
   const state = deploys.get(parsed.guildId);
   if (!state) {
     const err: any = new Error(`no active deploy for guild ${parsed.guildId}`);
@@ -264,7 +365,7 @@ async function handleSpeak(body: unknown) {
     throw err;
   }
   const r = await playInGuild(parsed.guildId, parsed.message);
-  return { ok: true, stub: state.stub, durationMs: r.durationMs };
+  return { ok: true, durationMs: r.durationMs, voiceUsed: r.voiceUsed };
 }
 
 async function handleUndeploy(body: unknown) {
@@ -277,7 +378,7 @@ async function handleUndeploy(body: unknown) {
   }
   const deployedSeconds = await leaveVc(state);
   deploys.delete(parsed.guildId);
-  return { ok: true, stub: state.stub, deployedSeconds };
+  return { ok: true, deployedSeconds };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -286,10 +387,10 @@ const server = http.createServer(async (req, res) => {
   try {
     if (method === 'GET' && url.pathname === '/health') {
       return sendJson(res, 200, {
-        ok: true,
+        ok: discordReady,
         deploys: deploys.size,
         discordReady,
-        stubMode: !discordReady,
+        botTag: discordClient?.user?.tag ?? null,
       });
     }
     if (method === 'POST' && url.pathname === '/deploy') {
@@ -319,7 +420,7 @@ async function main(): Promise<void> {
   await initDiscord();
   server.listen(env.DISCORD_BOT_PORT, () => {
     console.log(
-      `[discord-bot] HTTP control plane listening on http://localhost:${env.DISCORD_BOT_PORT} (stubMode=${!discordReady})`
+      `[discord-bot] HTTP control plane listening on http://localhost:${env.DISCORD_BOT_PORT}`
     );
   });
 }

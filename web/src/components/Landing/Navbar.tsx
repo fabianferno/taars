@@ -28,7 +28,7 @@ export default function Navbar() {
 
         <div className="flex items-center gap-6">
           <Link
-            href="#featured"
+            href="/explore"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
           >
             Explore
@@ -38,6 +38,12 @@ export default function Navbar() {
             className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
           >
             Earnings
+          </Link>
+          <Link
+            href="/pitch"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+          >
+            Pitch
           </Link>
           <Link
             href="#cta"

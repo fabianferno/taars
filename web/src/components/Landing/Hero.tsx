@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowRight, Compass } from "lucide-react";
+import { ArrowRight, Compass, Presentation } from "lucide-react";
 import Link from "next/link";
 
 export default function Hero() {
@@ -83,6 +83,13 @@ export default function Hero() {
             >
               <Compass className="w-4 h-4" />
               Explore taars
+            </Link>
+            <Link
+              href="/pitch"
+              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm font-medium px-4 py-3.5 transition-colors"
+            >
+              <Presentation className="w-4 h-4" />
+              View Pitch Deck
             </Link>
           </motion.div>
         </div>

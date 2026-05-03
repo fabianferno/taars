@@ -55,6 +55,19 @@ const NAME_WRAPPER_ABI = [
     ],
     outputs: [{ name: '', type: 'bytes32' }],
   },
+  {
+    name: 'safeTransferFrom',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'id', type: 'uint256' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 const REGISTRAR_CONTROLLER_ABI = [
@@ -374,6 +387,55 @@ export async function setTextsMulticall(
   });
   await publicClient.waitForTransactionReceipt({ hash: txHash });
   return txHash;
+}
+
+/**
+ * Transfer a wrapped subname to its real (user) owner. NameWrapper is ERC-1155
+ * so the wrapped name lives at id = uint256(node), amount = 1.
+ *
+ * Pattern used by createSubname → setTextsMulticall → transferSubnameOwnership:
+ *  1. Deployer creates the subname owned by deployer (so deployer can write records)
+ *  2. Deployer writes the full set of taars.* text records via multicall
+ *  3. Deployer transfers ownership to the user — at the end of the pipeline the
+ *     user is the on-chain owner of <label>.taars.eth, fulfilling the PRD
+ *     contract that "whoever owns the name owns the replica".
+ *
+ * Idempotent: if the wrapper already reports newOwner as the wrapped owner,
+ * skips the transfer.
+ */
+export async function transferSubnameOwnership(
+  fullName: string,
+  newOwner: Address
+): Promise<{ txHash?: Hash; alreadyOwned: boolean }> {
+  const { publicClient, walletClient, account } = makeClients();
+  const node = namehash(normalize(fullName));
+
+  const currentOwner = (await publicClient.readContract({
+    address: NAME_WRAPPER,
+    abi: NAME_WRAPPER_ABI,
+    functionName: 'ownerOf',
+    args: [BigInt(node)],
+  })) as Address;
+
+  if (currentOwner.toLowerCase() === newOwner.toLowerCase()) {
+    return { alreadyOwned: true };
+  }
+  if (currentOwner.toLowerCase() !== account.address.toLowerCase()) {
+    throw new Error(
+      `cannot transfer ${fullName}: deployer ${account.address} is not the wrapped owner (got ${currentOwner})`
+    );
+  }
+
+  const txHash = await walletClient.writeContract({
+    address: NAME_WRAPPER,
+    abi: NAME_WRAPPER_ABI,
+    functionName: 'safeTransferFrom',
+    args: [account.address, newOwner, BigInt(node), 1n, '0x'],
+    account,
+    chain: sepolia,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  return { txHash, alreadyOwned: false };
 }
 
 export async function readText(fullName: string, key: string): Promise<string> {

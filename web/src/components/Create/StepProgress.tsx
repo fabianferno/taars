@@ -41,7 +41,12 @@ export const MINT_STEPS: StepUI[] = [
   {
     key: 'ens.records',
     label: 'Write ENS records',
-    description: 'Multicall: 10 text records (INFT pointer, storage root, price, voice, …).',
+    description: 'Multicall: 11 text records (INFT pointer, storage root, price, voice, owner, …).',
+  },
+  {
+    key: 'ens.transfer',
+    label: 'Transfer to owner',
+    description: 'NameWrapper.safeTransferFrom — your wallet becomes the on-chain owner.',
   },
 ];
 
@@ -171,6 +176,14 @@ function DetailSummary({ step, detail }: { step: MintStepKey; detail: Record<str
     if (detail.txHash) items.push(['tx', truncate(String(detail.txHash), 14)]);
     if (typeof detail.recordCount === 'number')
       items.push(['records', String(detail.recordCount)]);
+  }
+  if (step === 'ens.transfer') {
+    if (detail.alreadyOwned) {
+      items.push(['status', 'already owned']);
+    } else if (detail.txHash) {
+      items.push(['tx', truncate(String(detail.txHash), 14)]);
+    }
+    if (detail.newOwner) items.push(['owner', truncate(String(detail.newOwner), 14)]);
   }
 
   if (items.length === 0) return null;

@@ -2,7 +2,7 @@
 
 Endpoints:
   POST /clone        multipart upload "sample" (audio/webm or wav) + "voice_id" form field
-                     -> registers the voice profile under /voices/<voice_id>.npy
+                     -> registers the voice profile under /voices/<voice_id>.pth
                      -> returns { voice_id, sample_rate }
   POST /synthesize   JSON { voice_id, text, speed? }
                      -> returns audio/wav bytes
@@ -90,7 +90,7 @@ async def clone(
     voice_id: str = Form(...),
 ):
     """Extract a tone-color embedding from an uploaded audio sample and store it
-    under /voices/<voice_id>.npy. Idempotent: re-uploading overwrites."""
+    under /voices/<voice_id>.pth. Idempotent: re-uploading overwrites."""
     if not voice_id.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(400, "voice_id must be alphanumeric (with optional - or _)")
 
@@ -107,9 +107,8 @@ async def clone(
             target_dir=os.path.join(_VOICES_DIR, "_extract"),
             vad=True,
         )
-        out = os.path.join(_VOICES_DIR, f"{voice_id}.npy")
-        np_se = target_se.detach().cpu().numpy()
-        np.save(out, np_se)
+        out = os.path.join(_VOICES_DIR, f"{voice_id}.pth")
+        torch.save(target_se, out)
     finally:
         try:
             os.unlink(tmp_path)
@@ -122,15 +121,21 @@ async def clone(
 @app.post("/synthesize")
 async def synthesize(req: SynthesizeRequest):
     """Generate a single WAV (mono, 24kHz int16) for the given voice + text."""
-    voice_path = os.path.join(_VOICES_DIR, f"{req.voice_id}.npy")
-    if not os.path.exists(voice_path):
+    pth_path = os.path.join(_VOICES_DIR, f"{req.voice_id}.pth")
+    npy_path = os.path.join(_VOICES_DIR, f"{req.voice_id}.npy")
+    if not (os.path.exists(pth_path) or os.path.exists(npy_path)):
         raise HTTPException(404, f"voice profile not found: {req.voice_id}")
 
     audio_chunks: list[np.ndarray] = []
     s = streamer()
     target_sr = 24000
-    for _sentence, audio_np in s.generate(req.voice_id, req.text, req.speed):
-        audio_chunks.append(resample(audio_np, s.converter_sr, target_sr))
+    try:
+        for _sentence, audio_np in s.generate(req.voice_id, req.text, req.speed):
+            audio_chunks.append(resample(audio_np, s.converter_sr, target_sr))
+    except FileNotFoundError as e:
+        # Belt-and-suspenders: pre-flight passed but the streamer's loader
+        # disagreed about path/format. Surface as 404 so callers can fall back.
+        raise HTTPException(404, str(e))
 
     if not audio_chunks:
         raise HTTPException(500, "no audio generated")

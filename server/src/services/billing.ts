@@ -5,6 +5,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import { env } from '../env.js';
 import { fireKeeperhubWorkflow, KH_WORKFLOWS } from './keeperhub.js';
+import { getInftOwnerOnZeroG } from './inft.js';
 
 const billingAbi = [
   {
@@ -30,6 +31,26 @@ const billingAbi = [
     stateMutability: 'view',
     inputs: [{ name: 'tokenId', type: 'uint256' }],
     outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'setRate',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'tokenId', type: 'uint256' },
+      { name: 'ratePerMinute_', type: 'uint128' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'claimRevenueFor',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'tokenId', type: 'uint256' },
+      { name: 'tokenOwner', type: 'address' },
+    ],
+    outputs: [],
   },
 ] as const;
 
@@ -185,6 +206,70 @@ export async function getOwnerBalance(tokenId: bigint): Promise<bigint> {
     functionName: 'ownerBalance',
     args: [tokenId],
   })) as bigint;
+}
+
+/// Pays out accrued revenue for `tokenId` to the verified 0G INFT owner.
+/// Reads ownership from the canonical 0G INFT, then calls `claimRevenueFor`
+/// on the Sepolia billing contract from the oracle key.
+export async function claimRevenueOnChain(tokenId: bigint): Promise<{ txHash: Hash; tokenOwner: Address }> {
+  if (!env.TAARS_BILLING_ADDRESS) {
+    throw new Error('TAARS_BILLING_ADDRESS not set');
+  }
+  const tokenOwner = await getInftOwnerOnZeroG(tokenId);
+  const account = privateKeyToAccount(env.DEPLOYER_PRIVATE_KEY as `0x${string}`);
+  const transport = http(env.SEPOLIA_RPC_URL);
+  const publicClient = createPublicClient({ chain: sepolia, transport });
+  const walletClient = createWalletClient({ chain: sepolia, transport, account });
+
+  const txHash: Hash = await walletClient.writeContract({
+    address: env.TAARS_BILLING_ADDRESS as Address,
+    abi: billingAbi,
+    functionName: 'claimRevenueFor',
+    args: [tokenId, tokenOwner],
+    account,
+    chain: sepolia,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  await appendAudit({ event: 'claim.success', tokenId: tokenId.toString(), tokenOwner, txHash });
+  return { txHash, tokenOwner };
+}
+
+/// Sets the per-minute rate (USDC atomic units) for `tokenId` on Sepolia, after
+/// verifying that `requestedOwner` matches the canonical 0G INFT owner.
+export async function setRateOnChain(
+  tokenId: bigint,
+  ratePerMinuteAtomic: bigint,
+  requestedOwner: Address
+): Promise<{ txHash: Hash }> {
+  if (!env.TAARS_BILLING_ADDRESS) {
+    throw new Error('TAARS_BILLING_ADDRESS not set');
+  }
+  const realOwner = await getInftOwnerOnZeroG(tokenId);
+  if (realOwner.toLowerCase() !== requestedOwner.toLowerCase()) {
+    throw new Error(`ownership mismatch: 0G says ${realOwner}, request claims ${requestedOwner}`);
+  }
+  const account = privateKeyToAccount(env.DEPLOYER_PRIVATE_KEY as `0x${string}`);
+  const transport = http(env.SEPOLIA_RPC_URL);
+  const publicClient = createPublicClient({ chain: sepolia, transport });
+  const walletClient = createWalletClient({ chain: sepolia, transport, account });
+
+  const txHash: Hash = await walletClient.writeContract({
+    address: env.TAARS_BILLING_ADDRESS as Address,
+    abi: billingAbi,
+    functionName: 'setRate',
+    args: [tokenId, ratePerMinuteAtomic],
+    account,
+    chain: sepolia,
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  await appendAudit({
+    event: 'setRate.success',
+    tokenId: tokenId.toString(),
+    ratePerMinuteAtomic: ratePerMinuteAtomic.toString(),
+    requestedOwner,
+    txHash,
+  });
+  return { txHash };
 }
 
 export const _internal = { expectedUsdFromRate, AUDIT_FILE, AUDIT_DIR };

@@ -119,6 +119,76 @@ Claude Code (Opus 4.7) was used pair-programming-style across the stack: scaffol
 
 ---
 
+## Sponsor feedback (from building taars)
+
+Specific, code-grounded notes from integrating each sponsor's stack over the
+hackathon. All examples are reproducible from this repo.
+
+### 🟣 0G
+
+**What worked well**
+- `@0gfoundation/0g-ts-sdk` `Indexer.upload(MemData, …)` is genuinely simple — three lines of TS to upload an encrypted blob and get a merkle root back. Excellent fit for INFT-style "encrypted artifact + on-chain pointer" patterns.
+- ERC-7857's `IntelligentData[]` shape (description + dataHash) maps cleanly to the way we already wanted to bundle a replica (soul / skills / voice).
+- 0G Galileo is EVM-compatible enough that nothing in our Hardhat / OpenZeppelin / viem toolchain needed special handling.
+
+**Friction (reproducible)**
+1. **SDK fork ambiguity.** Two TS SDKs exist with overlapping APIs: `@0glabs/0g-ts-sdk` (0.3.x) and `@0gfoundation/0g-ts-sdk` (1.2.x). The `@0glabs` one reverts on Galileo's Flow contract for some submissions; we landed on `@0gfoundation` after trial. A README pointer ("for Galileo testnet, use the `@0gfoundation` package") would save hours. Code reference: `server/src/services/storage.ts` lines 26–32.
+2. **Galileo RPC receipt flakiness.** `https://evmrpc-testnet.0g.ai` regularly returns "transaction not found" for valid hashes for ~10–30s after broadcast even when the tx ultimately lands. We had to write a custom `waitForReceiptResilient` poller (`server/src/services/inft.ts` lines 66–102) that tolerates transient `not found` for up to 8 minutes. Standard `viem.waitForTransactionReceipt` fails on this. Worth either (a) documenting it or (b) fixing the indexer.
+3. **iTransfer / sealed-key flow under-documented.** ERC-7857's `TransferValidityProof[]` and `PublishedSealedKey` events look like they're meant to coordinate TEE re-encryption but there's no concrete reference flow showing what to put in the proof, who signs it, and what the oracle does with the sealed key. We ended up shipping a placeholder (no proof, empty key) and pushing the re-encryption work onto KeeperHub's audit step. A reference oracle implementation would unlock the full ERC-7857 story.
+4. **Storage indexer `upload()` return shape.** The `tx` object returned has `rootHash` on success but the type is loose — we ended up reading `tx.rootHash || tx.root || tx.hash` defensively. A typed return would help.
+5. **0G Compute (TEE).** Documentation exists but onboarding a custom workload (we wanted to run OpenVoice in a TEE) wasn't approachable in a hackathon timebox. A "bring your own Docker image to a TEE GPU" Hello World would massively widen the funnel — right now the path looks like it's optimised for partners, not builders.
+
+### 🌳 ENS
+
+**What worked well**
+- v3 ETHRegistrarController + NameWrapper on Sepolia is solid. We registered `taars.eth` with commit-reveal and the whole flow ran without surprises.
+- Wrapped subnames as ERC-1155 tokens make the operator pattern (deployer creates → writes records → `safeTransferFrom`s to user) clean. We end up with the user as the canonical on-chain owner of `<label>.taars.eth` after one ceremony.
+- `PublicResolver.multicall` lets us write 11 text records in one tx instead of 11 — concretely cut our ENS gas cost ~10× and got us under one user-facing "creating your replica…" loading state. This pattern deserves more visibility in docs.
+- Sepolia ENS app (`sepolia.app.ens.domains`) is the right hackathon-grade explorer for verifying records.
+
+**Friction**
+1. **Address-zoo for v3 controllers.** ETHRegistrarController, NameWrapper, PublicResolver each have different addresses across mainnet / Sepolia / Goerli, and v2 vs v3 vs the upcoming L2 controllers. We spent ~30 minutes hunting for the "right" Sepolia v3 controller (`0xFED6a969AaA60E4961FCD3EBF1A2e8913ac65B72`) because docs surface multiple historical contracts. A canonical "Sepolia ENS v3 contract addresses" page (one source of truth) would help.
+2. **`setText` from a different signer than the wrapped owner reverts silently** without a clear "you are not the wrapped owner" error. The trace just shows the call reverting in the resolver. We spent time confirming the operator was actually the wrapped owner before the message clicked.
+3. **Subname rate-limits / fuses interaction.** Setting fuses on subnames isn't intuitive — we set fuses=0 and expiry=`type(uint64).max` and let the wrapper cap at parent expiry. This works but the "what fuses should I set for a hackathon project" answer isn't obvious. A recipe-style "subnames-as-agent-identity" page would help.
+4. **Reverse resolution from an ENS subname back to the on-chain INFT** is currently app-side glue (parse `taars.inft` text record). A pattern (or namespaced standard) for "this ENS name = this token on this chain" would let third-party wallets render INFT-backed names natively.
+
+### 🛠 KeeperHub
+
+**What worked well**
+- The visual workflow editor + node-based templating (`{{@trigger:Webhook.body.X}}`) is a genuinely fast way to wire on-chain post-action checks. Building three workflows took less than an hour each.
+- The MCP plugin is a great DX surface — `list_workflows`, `execute_workflow`, `get_execution_status` are exactly the right primitives, and they let us script + audit from inside Claude Code without leaving the editor.
+- `web3/get-transaction` and `web3/read-contract` action nodes covered every "did this tx actually land?" / "what's the on-chain state now?" need we had. No custom action code needed.
+- The execution history view (with input, output, error, executionTrace per node) is the right level of detail for cross-referencing with our own server-side audit logs.
+
+**Friction (this is also our Builder Feedback Bounty submission — see below)**
+- See the dedicated section.
+
+---
+
+## 🔍 Builder Feedback Bounty — KeeperHub (paste this into the bounty form)
+
+The four issues below are reproducible from this repo and were genuine
+blockers / time-sinks during integration. Each one is paired with a
+concrete fix suggestion.
+
+**1. Webhook trigger auth is undiscoverable.**
+The dashboard's webhook trigger node shows `https://app.keeperhub.com/api/workflows/{id}/webhook` but no Auth header shape. We tried every common pattern with our `kh_…` API key — `Authorization: Bearer kh_…`, `X-API-Key: kh_…`, query-string, `Authorization: ApiKey kh_…`. All return `401 {"error":"Invalid API key format"}`. The same `kh_…` key works fine for `GET /api/workflows/{id}` and `GET /api/workflows/{id}/executions`, so this is a webhook-vs-read key split that isn't surfaced anywhere we could find. Fix: add a "Copy webhook URL with auth" button to the trigger node that copies the full `curl` snippet, OR document the webhook-secret credential type explicitly.
+
+**2. The 401 message hides the real cause.**
+`{"error":"Invalid API key format"}` is misleading — the format isn't invalid; it's the wrong *type* of key for that endpoint. A more actionable message: `"Webhook triggers require a workflow trigger secret, not an account API key — find it under <path>"`. Saved us probably an hour.
+
+**3. Trigger-input contract is reverse-engineered, not documented.**
+`{{@trigger:<NodeLabel>.body.X}}` works but we figured this out from peeking at workflow JSON returned by the API. It also isn't obvious whether the input field name needs to match a schema (it doesn't seem to — undefined fields just template to empty string and downstream nodes fail with cryptic "missing argument" errors). Fix: per-workflow "expected input contract" panel that shows what fields downstream nodes consume from `body`, with example mock requests pre-filled (you already have `webhookMockRequest` — surface the *resolved* templating).
+
+**4. ExecutionIds aren't deep-linkable.**
+`execute_workflow` returns `{ "executionId": "ua32kdqse1nlqkiikzfot" }`. To view it I have to navigate to the workflow → executions tab → find the row. A `/executions/{id}` URL that opens directly to the trace would make audit cross-references one-click — critical for "guaranteed audit trail" being the headline pitch. Bonus: include `dashboardUrl` in the API response so SDK consumers can log it next to their own audit ID.
+
+**5. Bonus / minor:** `triggerType: "Webhook"` workflows can't be triggered via `mcp.call_workflow` (which requires `listedSlug`). It would be tidy if MCP `execute_workflow` was the single, auth-uniform path for any workflow regardless of trigger type — that'd remove the entire webhook-secret class of friction for SDK users.
+
+Reproduction repo: see `docs/keeperhub-executions.md` for the four real executionIds we generated while integrating, plus the exact server fire-points (`server/src/services/keeperhub.ts`, `billing.ts`, `transfer.ts`, `routes/deploy.ts`).
+
+---
+
 ## Team
 - **Fabian Ferno** — Telegram `@fabianferno` · X `@fabianferno`
 

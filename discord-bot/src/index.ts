@@ -101,6 +101,30 @@ async function initDiscord(): Promise<void> {
       GatewayIntentBits.MessageContent,
     ],
   });
+  discordClient.on('messageCreate', async (message: any) => {
+    try {
+      if (message.author?.bot) return;
+      if (!message.guildId) return;
+      const state = deploys.get(message.guildId);
+      if (!state) return; // no active deploy in this guild
+      if (!message.mentions?.has?.(discordClient.user)) return;
+
+      // Strip the bot mention token (with or without nickname `<@!id>`).
+      const botId = discordClient.user.id;
+      const stripped = (message.content as string)
+        .replace(new RegExp(`<@!?${botId}>`, 'g'), '')
+        .trim();
+      if (!stripped) return;
+
+      const reply = await agentReply(state, stripped);
+      if (!reply) return;
+      const out = reply.length > 1900 ? reply.slice(0, 1900) + ' …' : reply;
+      await message.reply(out);
+    } catch (e) {
+      console.warn('[discord-bot] mention handler failed:', (e as Error).message);
+    }
+  });
+
   await new Promise<void>((resolve, reject) => {
     discordClient.once('ready', () => {
       console.log(`[discord-bot] logged in as ${discordClient.user?.tag}`);

@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { env } from '../env.js';
 import { settleSessionOnChain, startSessionOnChain } from '../services/billing.js';
 import { fireKeeperhubWorkflow, KH_WORKFLOWS } from '../services/keeperhub.js';
-import { startSession } from '../services/sessions.js';
+import { startSession, endSession } from '../services/sessions.js';
 
 // ----- types -----
 
@@ -225,7 +225,9 @@ deploy.post('/discord', async (c) => {
 
   // Open the billing session on chain so /discord/end can settle it. The oracle
   // wallet is the on-chain `caller`; at tokenId=0 the snapshot rate is 0 so no
-  // USDC moves at settle time. Don't fail the deploy if this errors.
+  // USDC moves at settle time. If TAARS_BILLING_ADDRESS is set, this MUST
+  // succeed — otherwise settle later will revert with "unknown session" and
+  // pollute the KeeperHub audit trail.
   try {
     const startRes = await startSessionOnChain(sessionId, tokenId);
     await appendAudit({ event: 'deploy.session_started', deployId, sessionId, tokenId, startRes });
@@ -237,6 +239,14 @@ deploy.post('/discord', async (c) => {
       tokenId,
       error: (e as Error).message?.slice(0, 200),
     });
+    return c.json(
+      {
+        ok: false,
+        error: 'billing_unavailable',
+        detail: (e as Error).message?.slice(0, 200),
+      },
+      503
+    );
   }
 
   // Fire KeeperHub Discord deploy lifecycle workflow (start event).
@@ -341,6 +351,11 @@ deploy.post('/discord/end', async (c) => {
 
   record.endedAt = Math.floor(Date.now() / 1000);
   record.status = 'ended';
+
+  // Close the chat session opened at /discord deploy time. Without this, the
+  // x402 middleware would keep accepting calls on the session id forever and
+  // the in-memory sessions map would grow unboundedly across deploys.
+  endSession(record.sessionId);
 
   const expected = expectedUsd(record.ratePerMinUsd, deployedSeconds);
   await appendAudit({

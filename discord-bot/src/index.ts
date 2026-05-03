@@ -245,7 +245,11 @@ async function attachVoiceListener(state: DeployState): Promise<void> {
   state.receiver = receiver;
 
   receiver.speaking.on('start', (userId: string) => {
-    if (state.speaking) return; // bot is already replying; ignore new turns
+    // Claim the turn lock synchronously so two near-simultaneous speakers
+    // can't both pass the gate. The lock is released in the 'end' handler,
+    // including the early-exit paths (too short / empty transcript / stopword).
+    if (state.speaking) return;
+    state.speaking = true;
     const opusStream = receiver.subscribe(userId, {
       end: { behavior: voiceMod.EndBehaviorType.AfterSilence, duration: 1000 },
     });
@@ -257,15 +261,14 @@ async function attachVoiceListener(state: DeployState): Promise<void> {
     const chunks: Buffer[] = [];
     const pcmStream = opusStream.pipe(decoder);
     pcmStream.on('data', (c: Buffer) => chunks.push(c));
-    pcmStream.on('error', (e: Error) =>
-      console.warn(`[discord-bot] pcm stream error ${state.guildId}:`, e.message)
-    );
+    pcmStream.on('error', (e: Error) => {
+      console.warn(`[discord-bot] pcm stream error ${state.guildId}:`, e.message);
+      state.speaking = false;
+    });
     pcmStream.on('end', async () => {
-      const pcm = Buffer.concat(chunks);
-      if (pcm.length < MIN_PCM_BYTES) return; // too short, likely noise
-      if (state.speaking) return; // raced with another turn
-      state.speaking = true;
       try {
+        const pcm = Buffer.concat(chunks);
+        if (pcm.length < MIN_PCM_BYTES) return; // too short, likely noise
         const text = await transcribePcm(state, pcm);
         if (!text || STOPWORDS.test(text)) return;
         console.log(`[discord-bot] heard ${state.guildId} <${userId}>: ${text}`);

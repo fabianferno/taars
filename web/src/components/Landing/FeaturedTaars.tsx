@@ -6,20 +6,6 @@ import { BadgeCheck, MessageCircle, Users } from "lucide-react";
 import Image from "next/image";
 import { useRef } from "react";
 
-const landingGradients: Record<string, string> = {
-  "vitalik.taars.eth": "from-orange-700 to-orange-950",
-  "trump.taars.eth": "from-orange-700 to-orange-950",
-  "fabian.taars.eth": "from-orange-600 to-orange-800",
-  "balaji.taars.eth": "from-orange-600 to-orange-900",
-};
-
-const landingPrices: Record<string, string> = {
-  "vitalik.taars.eth": "$5.00",
-  "trump.taars.eth": "$10.00",
-  "fabian.taars.eth": "$1.00",
-  "balaji.taars.eth": "$3.00",
-};
-
 function TaarCard({
   taar,
   index,
@@ -27,8 +13,8 @@ function TaarCard({
   taar: UiAgent;
   index: number;
 }) {
-  const gradient = landingGradients[taar.ens] || "from-orange-600 to-orange-900";
-  const price = landingPrices[taar.ens] || taar.price;
+  const gradient = taar.gradient;
+  const price = taar.price;
   const isSelf = taar.verification === "self";
 
   return (

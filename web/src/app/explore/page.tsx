@@ -27,7 +27,8 @@ const SORTS: { key: SortKey; label: string }[] = [
 ];
 
 function formatPrice(t: UiAgent): string {
-  return t.pricePerMinUsd === 0 ? "Free" : `$${t.pricePerMinUsd.toFixed(2)}/min`;
+  const n = Number(t.pricePerMinUsd);
+  return !Number.isFinite(n) || n <= 0 ? "Free" : `$${n.toFixed(2)}/min`;
 }
 
 function TaarCard({ taar }: { taar: UiAgent }) {
@@ -86,7 +87,7 @@ function TaarCard({ taar }: { taar: UiAgent }) {
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{formatPrice(taar)}</span>
           <span aria-hidden>·</span>
-          <span>★ {taar.rating.toFixed(1)}</span>
+          <span>★ {(taar.rating ?? 0).toFixed(1)}</span>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background opacity-90 group-hover:opacity-100">
           <MessageCircle className="h-3 w-3" />
@@ -117,26 +118,24 @@ export default function ExplorePage() {
       });
     }
     if (category !== "all") {
-      list = list.filter((t) => t.category === category);
+      // on-chain agents have no category yet — keep filter as no-op for the demo
+      list = list.filter(() => true);
     }
+    const priceOf = (t: UiAgent) => Number(t.pricePerMinUsd) || 0;
+    const ratingOf = (t: UiAgent) => t.rating ?? 0;
     switch (sort) {
       case "price-asc":
-        list.sort((a, b) => a.pricePerMinUsd - b.pricePerMinUsd);
+        list.sort((a, b) => priceOf(a) - priceOf(b));
         break;
       case "price-desc":
-        list.sort((a, b) => b.pricePerMinUsd - a.pricePerMinUsd);
+        list.sort((a, b) => priceOf(b) - priceOf(a));
         break;
       case "rating":
-        list.sort((a, b) => b.rating - a.rating);
+        list.sort((a, b) => ratingOf(b) - ratingOf(a));
         break;
       default:
-        // popular: trending first, then by rating
-        list.sort((a, b) => {
-          const ta = a.category === "trending" ? 0 : 1;
-          const tb = b.category === "trending" ? 0 : 1;
-          if (ta !== tb) return ta - tb;
-          return b.rating - a.rating;
-        });
+        // popular: most recently minted first
+        list.sort((a, b) => b.mintedAt - a.mintedAt);
     }
     return list;
   }, [query, category, sort, agents]);

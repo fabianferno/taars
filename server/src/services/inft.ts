@@ -171,3 +171,17 @@ export async function getInftOwnerOnZeroG(tokenId: bigint): Promise<Address> {
   })) as Address;
   return owner;
 }
+
+/// Like getInftOwnerOnZeroG, but returns null if the token doesn't exist instead of throwing.
+export async function tryGetInftOwnerOnZeroG(tokenId: bigint): Promise<Address | null> {
+  try {
+    return await getInftOwnerOnZeroG(tokenId);
+  } catch (e) {
+    const msg = (e as Error).message || '';
+    // viem revert / nonexistent token
+    if (/revert|ERC721NonexistentToken|Nonexistent|nonexistent|not exist/i.test(msg)) {
+      return null;
+    }
+    throw e; // rethrow real RPC/network errors
+  }
+}

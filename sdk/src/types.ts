@@ -88,17 +88,25 @@ export const TAARS_TEXT_KEYS = [
 export type AgentVerification = 'self' | 'community';
 
 export interface AgentRecord {
-  name: string;
-  ens: string;
-  initials: string;
-  bio: string;
-  category: 'trending' | 'top' | 'new';
-  rating: number;
-  pricePerMinUsd: number;
-  gradient: string;
-  verification: AgentVerification;
-  greeting: string;
-  disclaimer?: string;
-  image?: string;
-  featured?: boolean;
+  // From local hint (recorded at mint time):
+  tokenId: string;             // decimal string
+  ens: string;                 // e.g. "vitalik.taars.eth"
+  ensLabel: string;            // e.g. "vitalik"
+  mintedAt: number;            // unix seconds
+
+  // From 0G chain:
+  owner: string;               // current ownerOf(tokenId) on 0G
+
+  // From ENS text records on Sepolia:
+  pricePerMinUsd: string;      // raw string, e.g. "0.15" (or "0" if unset)
+  description: string;
+  avatar: string;              // url
+  voiceId: string;
+  storageRoot: string;
+  // Derived UI bits (computed server-side from the above):
+  name: string;                // defaults to capitalized ensLabel
+  initials: string;            // first 2 chars of name uppercased
+  gradient: string;            // deterministic gradient from ensLabel hash
+  verification: AgentVerification;   // hackathon: always 'self' (real mint = self-verified)
+  featured?: boolean;          // first 4 mints on landing
 }

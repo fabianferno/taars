@@ -18,6 +18,8 @@ import {
   saveCheckpoint,
   type MintCheckpoint,
 } from '../services/mintCheckpoint.js';
+import { appendAgent } from '../services/agentsIndex.js';
+import { _invalidateAgentsCache } from '../services/agents.js';
 
 const personalitySchema = z.object({
   vibe: z.string().min(1),
@@ -130,6 +132,17 @@ mint.post('/', async (c) => {
         ? [...txEnsTextRecords, transferRes.txHash]
         : txEnsTextRecords,
     };
+    try {
+      await appendAgent({
+        tokenId: tokenId.toString(),
+        ensLabel: parsed.ensLabel,
+        ownerAddress: parsed.ownerAddress,
+        mintedAt: Math.floor(Date.now() / 1000),
+      });
+      _invalidateAgentsCache();
+    } catch (e) {
+      console.warn('[mint] agents-index append failed:', (e as Error).message);
+    }
     return c.json(response);
   } catch (e) {
     const err: MintErrorResponse = {
@@ -402,6 +415,17 @@ mint.post('/stream', async (c) => {
         txEnsTextRecords: transferTx ? [multicallTx, transferTx] : [multicallTx],
       };
       await persist({ completed: true });
+      try {
+        await appendAgent({
+          tokenId: tokenId.toString(),
+          ensLabel: parsed.ensLabel,
+          ownerAddress: parsed.ownerAddress,
+          mintedAt: Math.floor(Date.now() / 1000),
+        });
+        _invalidateAgentsCache();
+      } catch (e) {
+        console.warn('[mint] agents-index append failed:', (e as Error).message);
+      }
       await emit({ type: 'done', result: response });
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);

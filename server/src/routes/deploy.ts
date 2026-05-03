@@ -4,9 +4,9 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { env } from '../env.js';
-import { readAllTexts } from '../services/ens.js';
 import { settleSessionOnChain, startSessionOnChain } from '../services/billing.js';
 import { fireKeeperhubWorkflow, KH_WORKFLOWS } from '../services/keeperhub.js';
+import { startSession } from '../services/sessions.js';
 
 // ----- types -----
 
@@ -51,29 +51,6 @@ async function appendAudit(record: Record<string, unknown>): Promise<void> {
 }
 
 // ----- helpers -----
-
-const ENS_KEYS = [
-  'taars.voice',
-  'taars.price',
-  'taars.deploy.discord',
-  'taars.storage',
-  'taars.version',
-  'taars.inft',
-] as const;
-
-function parseTokenId(inftRef: string | undefined): string {
-  if (!inftRef) return '0';
-  const tail = inftRef.split(':').pop() ?? '';
-  return /^\d+$/.test(tail) ? tail : '0';
-}
-
-function rateForDiscord(records: Record<string, string>): string {
-  const explicit = records['taars.deploy.discord'];
-  if (explicit && Number(explicit) > 0) return explicit;
-  const base = Number(records['taars.price'] || '0');
-  if (!Number.isFinite(base) || base <= 0) return '0';
-  return (base * 2.5).toFixed(4);
-}
 
 async function callBot(
   pathname: string,
@@ -143,6 +120,7 @@ const startSchema = z.object({
   ensLabel: z.string().regex(/^[a-z0-9-]{2,32}$/),
   guildId: z.string().min(1),
   channelId: z.string().min(1),
+  textChannelId: z.string().min(1),
   ownerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
 });
 
@@ -168,22 +146,24 @@ deploy.post('/discord', async (c) => {
   }
   const ensFullName = `${parsed.data.ensLabel}.${env.PARENT_ENS_NAME}`;
   const deployId = `dpy_${randomBytes(8).toString('hex')}`;
-  const sessionId = (`0x${randomBytes(32).toString('hex')}`) as `0x${string}`;
   const txAuditId = `aud_${randomBytes(6).toString('hex')}`;
 
-  let voiceId = parsed.data.ensLabel;
-  let ratePerMinUsd = '0';
-  let tokenId = '0';
+  // Register a real chat session so the bot can call /chat/message and
+  // /chat/transcribe with the same x402 session header the web client uses.
+  let session;
   try {
-    const records = await readAllTexts(ensFullName, ENS_KEYS as unknown as string[]);
-    voiceId = records['taars.voice'] || voiceId;
-    ratePerMinUsd = rateForDiscord(records);
-    tokenId = parseTokenId(records['taars.inft']);
+    session = await startSession({
+      ensLabel: parsed.data.ensLabel,
+      callerAddress: parsed.data.ownerAddress,
+    });
   } catch (e) {
-    console.warn(
-      `[deploy/discord] ENS lookup failed for ${ensFullName}: ${(e as Error).message.slice(0, 120)}`
-    );
+    console.error(`[deploy/discord] startSession failed: ${(e as Error).message}`);
+    return c.json({ ok: false, error: 'session_init_failed' }, 500);
   }
+  const sessionId = session.sessionId;
+  const voiceId = session.voiceId;
+  const ratePerMinUsd = session.ratePerMinUsd;
+  const tokenId = session.tokenId;
 
   await appendAudit({
     event: 'deploy.start',
@@ -201,6 +181,7 @@ deploy.post('/discord', async (c) => {
   const botResp = await callBot('/deploy', {
     guildId: parsed.data.guildId,
     channelId: parsed.data.channelId,
+    textChannelId: parsed.data.textChannelId,
     voiceId,
     ensLabel: parsed.data.ensLabel,
     sessionId,

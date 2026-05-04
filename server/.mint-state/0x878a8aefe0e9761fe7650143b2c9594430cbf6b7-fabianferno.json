@@ -1,0 +1,11 @@
+{
+  "ensLabel": "fabianferno",
+  "ownerAddress": "0x878a8aeFe0e9761fe7650143B2C9594430Cbf6b7",
+  "createdAt": 1777821314076,
+  "updatedAt": 1777821314076,
+  "voice": {
+    "voiceId": "fabianferno",
+    "provider": "openvoice",
+    "sampleRate": 22050
+  }
+}

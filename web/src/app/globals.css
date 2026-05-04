@@ -2,6 +2,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Safelist gradient utilities generated server-side in services/agents.ts (pickGradient).
+   Tailwind v4 only emits utilities it sees in source — these strings arrive at runtime
+   from the API, so without this directive the Featured taars cards render bg-less. */
+@source inline("{from-orange-700,from-indigo-500,from-emerald-500,from-violet-500,from-sky-500,from-yellow-600,from-red-500,from-teal-500}");
+@source inline("{to-orange-950,to-purple-800,to-teal-800,to-fuchsia-800,to-blue-800,to-amber-900,to-red-800,to-cyan-800}");
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

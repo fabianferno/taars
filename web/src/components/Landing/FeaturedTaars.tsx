@@ -4,18 +4,20 @@ import { useAgents, type UiAgent } from "@/hooks/useAgents";
 import { motion, useInView } from "framer-motion";
 import { BadgeCheck, MessageCircle, Users } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRef } from "react";
 
-function TaarCard({
-  taar,
-  index,
-}: {
-  taar: UiAgent;
-  index: number;
-}) {
-  const gradient = taar.gradient;
-  const price = taar.price;
+function formatPrice(t: UiAgent): string {
+  const n = Number(t.pricePerMinUsd);
+  return !Number.isFinite(n) || n <= 0 ? "Free" : `$${n.toFixed(2)}/min`;
+}
+
+function TaarCard({ taar, index }: { taar: UiAgent; index: number }) {
   const isSelf = taar.verification === "self";
+  const ensLabel = taar.ens.replace(".taars.eth", "");
+  const avatarSrc =
+    taar.image ??
+    `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${encodeURIComponent(taar.ens)}&radius=50&backgroundType=gradientLinear`;
 
   return (
     <motion.div
@@ -23,82 +25,62 @@ function TaarCard({
       whileInView={{ opacity: 1, x: 0 }}
       viewport={{ once: true, margin: "-50px" }}
       transition={{ duration: 0.4, delay: index * 0.08 }}
-      className="flex-shrink-0 w-56 sm:w-60"
+      className="flex-shrink-0 w-72 sm:w-80"
     >
-      <div
-        className={`relative rounded-2xl bg-gradient-to-br ${gradient} p-4 h-72 flex flex-col justify-between overflow-hidden group`}
+      <Link
+        href={`/${ensLabel}`}
+        className="group block h-full rounded-2xl border border-surface-dark/60 bg-surface/40 p-5 transition-all hover:-translate-y-0.5 hover:border-accent/50 hover:bg-surface/70"
       >
-        {/* Decorative circles */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-
-        {/* Verification badge */}
-        <div className="relative flex items-center justify-between">
-          <div className="w-14 h-14 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20 overflow-hidden">
-            {taar.image ? (
-              <Image
-                src={taar.image}
-                alt={taar.name}
-                width={56}
-                height={56}
-                className="w-full h-full object-cover object-top"
-              />
-            ) : (
-              <span className="font-coolvetica text-lg text-white/90">
-                {taar.initials}
-              </span>
-            )}
-          </div>
-          {isSelf ? (
-            <span className="inline-flex items-center gap-1 bg-white/20 backdrop-blur-sm rounded-full px-2 py-0.5 border border-white/10">
-              <BadgeCheck size={11} className="text-white" />
-              <span className="text-[9px] text-white font-medium">Verified</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 bg-black/20 backdrop-blur-sm rounded-full px-2 py-0.5 border border-white/10">
-              <Users size={11} className="text-white/60" />
-              <span className="text-[9px] text-white/60 font-medium italic">Community</span>
-            </span>
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="relative mt-auto space-y-2">
-          <div>
-            <h3 className="font-coolvetica text-xl text-white leading-tight">
-              {taar.name}
-            </h3>
-            <p className="text-white/60 text-xs mt-0.5 line-clamp-2">{taar.bio}</p>
+        <div className="flex items-start gap-4">
+          <div
+            className={`shrink-0 h-14 w-14 rounded-full bg-gradient-to-br ${taar.gradient} flex items-center justify-center overflow-hidden border border-white/10`}
+          >
+            <Image
+              src={avatarSrc}
+              alt={taar.name}
+              width={56}
+              height={56}
+              className="w-full h-full object-cover object-top"
+              unoptimized={!taar.image}
+            />
           </div>
 
-          {/* Community disclaimer */}
-          {taar.disclaimer && (
-            <p className="text-white/40 text-[9px] italic leading-tight line-clamp-1">
-              {taar.disclaimer}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-coolvetica text-xl text-foreground truncate">
+                {taar.name}
+              </h3>
+              {isSelf ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
+                  <BadgeCheck size={11} /> Verified
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground italic">
+                  <Users size={11} /> Community
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+              {taar.bio}
             </p>
-          )}
-
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-white/40 font-mono truncate">
+            <p className="mt-2 font-mono text-[11px] text-muted-foreground/80 truncate">
               {taar.ens}
-            </span>
-          </div>
-
-          <div className="relative z-10 flex items-center justify-between pt-1">
-            <span className="text-white/70 text-xs">
-              {price}
-              <span className="text-white/40"> /min</span>
-            </span>
-            <button
-              type="button"
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-black/10 bg-[#ffffff] px-3 py-1.5 text-xs font-medium text-[#0a0a0a] shadow-sm transition-colors [color-scheme:light] appearance-none hover:bg-[#f5f5f5]"
-            >
-              <MessageCircle className="h-3 w-3 text-[#0a0a0a]" />
-              Chat
-            </button>
+            </p>
           </div>
         </div>
-      </div>
+
+        <div className="mt-4 flex items-center justify-between">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{formatPrice(taar)}</span>
+            <span aria-hidden>·</span>
+            <span>★ {(taar.rating ?? 0).toFixed(1)}</span>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background opacity-90 group-hover:opacity-100">
+            <MessageCircle className="h-3 w-3" />
+            Chat
+          </span>
+        </div>
+      </Link>
     </motion.div>
   );
 }

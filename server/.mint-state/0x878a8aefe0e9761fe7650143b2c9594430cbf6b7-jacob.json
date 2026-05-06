@@ -1,0 +1,47 @@
+{
+  "ensLabel": "jacob",
+  "ownerAddress": "0x878a8aeFe0e9761fe7650143B2C9594430Cbf6b7",
+  "createdAt": 1777914914506,
+  "updatedAt": 1777915024881,
+  "voice": {
+    "voiceId": "jacob",
+    "provider": "openvoice",
+    "sampleRate": 22050
+  },
+  "storage": {
+    "intelligentData": [
+      {
+        "dataDescription": "soul.md",
+        "dataHash": "0x46d3505d778e5015ba9dbc7fffc5a1898bc53bcd91a52021251708f3ae3a9c16",
+        "storageRoot": "0x46d3505d778e5015ba9dbc7fffc5a1898bc53bcd91a52021251708f3ae3a9c16"
+      },
+      {
+        "dataDescription": "skills.json",
+        "dataHash": "0x08d9830ea13edf72911ae9c8aa2982fd00d85733bdb251c149fb3d61281d0d3f",
+        "storageRoot": "0x08d9830ea13edf72911ae9c8aa2982fd00d85733bdb251c149fb3d61281d0d3f"
+      },
+      {
+        "dataDescription": "voice.json",
+        "dataHash": "0xf1f9d7a8ebf830a0e6fc5b4966920f7434f80ec29e382fa72de1096d29aa5c95",
+        "storageRoot": "0xf1f9d7a8ebf830a0e6fc5b4966920f7434f80ec29e382fa72de1096d29aa5c95"
+      }
+    ],
+    "storageRoot": "0x46d3505d778e5015ba9dbc7fffc5a1898bc53bcd91a52021251708f3ae3a9c16"
+  },
+  "inft": {
+    "tokenId": "10",
+    "txHash": "0xaab8979676414c550809aa0dd10778d4b0e5821e73de555bbc088f5f327fb221"
+  },
+  "ensSubname": {
+    "txHash": "0xed413cea53a367288a7d326a0ea1a996fc2db38ba70c58347a474c2282fb9844"
+  },
+  "ensRecords": {
+    "txHash": "0x6c3df2a35aa64533b70f10e5e844c7ff077f8e50ddf6bfe921845eeeb9c042f2",
+    "recordCount": 11
+  },
+  "ensTransfer": {
+    "txHash": "0x24b98d090c3042163e0efe40b63d6a34b18d8246b9677abeea83ae3470f01a54",
+    "alreadyOwned": false
+  },
+  "completed": true
+}

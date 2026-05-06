@@ -15,8 +15,15 @@ import { billing } from './routes/billing.js';
 
 const app = new Hono();
 
+/** Reflect browser Origin when present so ACAO is never ambiguous with streamed bodies; fall back to * for curl etc. */
+const corsMw = cors({
+  origin: (origin) => origin || '*',
+  maxAge: 86_400,
+  allowHeaders: ['Content-Type', 'X-Taars-Session'],
+});
+
 app.use('*', logger());
-app.use('*', cors());
+app.use('*', corsMw);
 app.route('/health', health);
 app.route('/mint', mint);
 app.route('/resolve', resolve);

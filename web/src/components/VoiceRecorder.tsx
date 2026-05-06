@@ -8,6 +8,9 @@ interface Props {
   onModeChange?: (mode: 'record' | 'upload') => void;
   /** Shown while recording so the user has scripted text for a consistent voice sample. */
   samplePrompt?: string;
+  /** Reject blobs larger than this (raw bytes, before base64). */
+  maxBlobBytes?: number;
+  onBlobRejected?: (message: string) => void;
 }
 
 export function VoiceRecorder({
@@ -16,6 +19,8 @@ export function VoiceRecorder({
   mode = 'record',
   onModeChange,
   samplePrompt,
+  maxBlobBytes,
+  onBlobRejected,
 }: Props) {
   const [recording, setRecording] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(maxSeconds);
@@ -48,9 +53,15 @@ export function VoiceRecorder({
     };
     rec.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+      stream.getTracks().forEach((t) => t.stop());
+      if (maxBlobBytes !== undefined && blob.size > maxBlobBytes) {
+        onBlobRejected?.(
+          `Recording is too large (${(blob.size / (1024 * 1024)).toFixed(1)} MB). Try stopping sooner or use upload with a compressed file.`
+        );
+        return;
+      }
       setRecordedUrl(URL.createObjectURL(blob));
       onComplete(blob);
-      stream.getTracks().forEach((t) => t.stop());
     };
     rec.start();
     mediaRef.current = rec;
@@ -69,6 +80,13 @@ export function VoiceRecorder({
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (maxBlobBytes !== undefined && file.size > maxBlobBytes) {
+      onBlobRejected?.(
+        `File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB, max ~${(maxBlobBytes / (1024 * 1024)).toFixed(0)} MB raw before encoding).`
+      );
+      e.target.value = '';
+      return;
+    }
     setUploadedUrl(URL.createObjectURL(file));
     onComplete(file);
   }

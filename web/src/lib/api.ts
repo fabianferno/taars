@@ -5,7 +5,10 @@ import type {
   PersonalityAnswers,
 } from '@taars/sdk';
 
-export const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:8080';
+const rawServerUrl = process.env.NEXT_PUBLIC_SERVER_URL?.trim();
+/** Empty string is treated as unset so fetch does not hit `${''}/path` on the same deployment. */
+export const SERVER_URL =
+  rawServerUrl && rawServerUrl.length > 0 ? rawServerUrl.replace(/\/$/, '') : 'http://localhost:8080';
 
 export async function mintReplica(req: MintRequest): Promise<MintResponse> {
   const res = await fetch(`${SERVER_URL}/mint`, {
@@ -14,6 +17,11 @@ export async function mintReplica(req: MintRequest): Promise<MintResponse> {
     body: JSON.stringify(req),
   });
   if (!res.ok) {
+    if (res.status === 413) {
+      throw new Error(
+        'Voice sample is too large for the gateway (HTTP 413). Try a shorter recording or a smaller file.'
+      );
+    }
     let err: MintErrorResponse | { error?: string } = {};
     try {
       err = await res.json();
@@ -74,6 +82,11 @@ export async function mintReplicaStream(
     signal,
   });
   if (!res.ok || !res.body) {
+    if (res.status === 413) {
+      throw new Error(
+        'Voice sample is too large for the gateway (HTTP 413). Try a shorter recording or a smaller file, or ask the operator to raise client_max_body_size / Cloudflare upload limits.'
+      );
+    }
     throw new Error(`mint/stream failed: ${res.status} ${res.statusText}`);
   }
   const reader = res.body.getReader();

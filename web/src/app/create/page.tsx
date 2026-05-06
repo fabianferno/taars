@@ -19,6 +19,7 @@ import {
   type MintStepKey,
   type MintStreamEvent,
 } from '@/lib/api';
+import { MAX_VOICE_BLOB_BYTES, voiceBlobTooLargeMessage } from '@/lib/voiceLimits';
 
 type WizardStep = 'name' | 'voice' | 'personality' | 'price' | 'minting' | 'done';
 
@@ -108,6 +109,10 @@ export default function CreatePage() {
 
   async function forge(opts?: { fresh?: boolean }) {
     if (!wallet || !voiceBlob) return;
+    if (voiceBlob.size > MAX_VOICE_BLOB_BYTES) {
+      setError(voiceBlobTooLargeMessage(voiceBlob.size));
+      return;
+    }
     setStep('minting');
     setError(null);
     setErrorStep(null);
@@ -259,7 +264,9 @@ export default function CreatePage() {
           <Help>
             Up to 60s of natural speech. When you start recording, read the passage shown — it
             helps capture a consistent sample. The clone is processed locally via OpenVoice
-            (production target: TEE-backed 0G Compute).
+            (production target: TEE-backed 0G Compute). Keep uploads under ~{' '}
+            {(MAX_VOICE_BLOB_BYTES / (1024 * 1024)).toFixed(0)} MB — larger files fail after
+            encoding because of gateway limits.
           </Help>
           <div className="mt-4">
             <VoiceRecorder
@@ -267,6 +274,8 @@ export default function CreatePage() {
               mode={voiceMode}
               onModeChange={setVoiceMode}
               samplePrompt={VOICE_SAMPLE_PROMPT}
+              maxBlobBytes={MAX_VOICE_BLOB_BYTES}
+              onBlobRejected={(msg) => setError(msg)}
             />
           </div>
           <NextRow>
